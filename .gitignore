@@ -1,0 +1,10 @@
+.env
+.env.*
+.venv/
+src/sre_agent.egg-info/
+graphify-out
+.gitattributes
+tests/__pycache__
+__pycache__
+*/*/__pycache__
+.vscode/

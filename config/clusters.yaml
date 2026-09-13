@@ -1,0 +1,6 @@
+clusters:
+  docker-desktop-test:
+    context: docker-desktop
+    kubeconfig_file: 
+    default_namespace: default
+    description: Local development cluster

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "dependencies": ["."],
+  "graphs": {
+    "sre_agent": "./src/sre_agent/graph.py:graph"
+  }
+}
