@@ -4,7 +4,7 @@ from langgraph.graph import MessagesState
 
 import operator
 
-
+# Контракт состояния
 SupervisorAgentName = Literal[
     "kubernetes",
     "memory",
@@ -12,6 +12,7 @@ SupervisorAgentName = Literal[
     "chat",
 ]
 
+# Контракт состояния
 class SupervisorDecision(BaseModel):
     """
     План обработки сложного пользовательского запроса.
@@ -76,7 +77,7 @@ class SupervisorDecision(BaseModel):
         return normalized_reason
 
 
-
+# Контракт состояния
 class RCAQualityCheck(BaseModel):
     """
     Structured evaluation of collected incident evidence.
@@ -107,6 +108,7 @@ class RCAQualityCheck(BaseModel):
     # полезное улучшение именно для control loop
     evaluation_summary: str
 
+# Контракт состояния
 class IncidentContext(BaseModel):
     """
     Normalized context collected from specialist agents.
@@ -148,12 +150,63 @@ def keep_latest_value(left: str | None, right: str | None) -> str | None:
     """
     return right if right is not None else left
 
+# Контракт состояния (inheret Pydantic)
+class AgentGoal(BaseModel):
+    """
+    Structured representation of the desired environment state.
+
+    AgentGoal is separated from the original user message and acts
+    as the execution contract for the autonomous agent.
+    """
+
+    # лишние или неправильно названные поля нельзя использовать при инициализации объекта. Поскольку лишние поля не является частью контракта цели.
+    model_config = ConfigDict(extra="forbid")
+
+    # нормализованное описание желаемого результата
+    description: str = Field(
+        min_length=1,
+        description=(
+            "Human-readable description of the desired environment state."
+        ),
+    )
+
+    # определяет критерии, по которым evaluator поймёт, что работа завершена
+    success_criteria: list[str] = Field(
+        min_length=1,
+        description=(
+            "Observable conditions that must be true before the goal can be considered achieved."
+        ),
+    )
+
+    # безопасности ограничения
+    constraints: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Operational boundaries that every planned action must respect."
+        ),
+    )
+
+    # лимит автономности агента
+    max_iterations: int = Field(
+        ge=1,
+        le=20,
+        description=(
+            "Maximum number of autonomous control-loop iterations."
+        ),
+    )
+
 
 # total=False: чтобы не требовать все поля при вызове графа
 class SREAgentState(MessagesState, total=False):
+
     """
     Explicit state schema for SRE/Kubernetes assistant.
     """
+
+    # Structured desired state, stored separately from user messages.
+    # AgentGoal must be validated before being converted to dict.
+    goal: dict[str, Any] | None
+
 
     # Полная long-term memory пользователя
     memory_context: dict[str, Any]

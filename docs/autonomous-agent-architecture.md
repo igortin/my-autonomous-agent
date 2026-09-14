@@ -542,7 +542,7 @@ Evaluate
 
 
 Развернутый вид:
-```
+```mermaid
 flowchart TD
     U["User goal"] --> S["supervisor_node<br/>Plan or replan"]
     S --> D["dispatch_specialists<br/>Parallel Send"]
@@ -552,7 +552,7 @@ flowchart TD
     E --> R{"route_after_evaluator()"}
 
     R -->|"needs_more_data<br/>retry budget remains"| P["prepare_retry_node"]
-    P -->|"feedback + previous context"| S
+    P -->|"feedback and previous context"| S
 
     R -->|"enough data<br/>or retry limit"| F["final_rca_node"]
     F --> H["Human approval"]
