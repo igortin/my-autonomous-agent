@@ -1,2 +1,2 @@
-# lesson 1 - my-autonomous-agent
+# my-autonomous-agent
 
