@@ -2,6 +2,8 @@
 
 ## Week 1 Lesson 1
 
+### Goal как first-class entity
+
 ####  Создание класса AgentGoal и проверка раздельного хранения в  SREAgent 
 
 ```mermaid
