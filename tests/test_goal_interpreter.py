@@ -70,8 +70,6 @@ async def test_goal_interpreter_returns_structured_goal(
 
     assert result["goal_interpreter_error"] is None
 
-
-    
     fake_goal_model.ainvoke.assert_awaited_once()
 
 
@@ -101,6 +99,7 @@ async def test_goal_interpreter_handles_model_error(monkeypatch):
         ]
     }
 
+    # Вызываем LLM с config {} и ловим exception RuntimeError
     result = await goal_module.goal_interpreter_node(state, {})
 
     assert result["goal"] is None
@@ -133,6 +132,4 @@ async def test_goal_interpreter_handles_missing_human_message():
 
     assert result["goal_interpreter_error"] is not None
 
-
     assert "No HumanMessage" in result["goal_interpreter_error"]["message"]
-
