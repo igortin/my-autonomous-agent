@@ -44,6 +44,9 @@ import sys, json, yaml, re
 from textwrap import dedent
 from langgraph.types import Send, interrupt, Command
 
+from sre_agent.autonomy.goal import (
+    goal_interpreter_node,
+)
 
 ###################################################
 ## supervisor MODEL
@@ -1387,6 +1390,10 @@ def build_graph():
     # -------------------------
     # Nodes
     # -------------------------
+    supervisor_builder.add_node(
+        "goal_interpreter_node",
+        goal_interpreter_node,
+    )
     
     supervisor_builder.add_node(
         "supervisor_node",
@@ -1456,6 +1463,11 @@ def build_graph():
 
     supervisor_builder.add_edge(
         START,
+        "goal_interpreter_node",
+    )
+
+    supervisor_builder.add_edge(
+        "goal_interpreter_node",
         "supervisor_node",
     )
 

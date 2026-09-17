@@ -207,7 +207,9 @@ class SREAgentState(MessagesState, total=False):
     # AgentGoal must be validated before being converted to dict.
     goal: dict[str, Any] | None
 
-
+    # Ошибка преобразования пользовательского запроса в AgentGoal.
+    goal_interpreter_error: dict[str, Any] | None
+    
     # Полная long-term memory пользователя
     memory_context: dict[str, Any]
 
