@@ -1,6 +1,8 @@
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from langchain_core.runnables import RunnableConfig
+
+from pydantic import ValidationError
 
 from sre_agent.model import model
 
@@ -28,11 +30,18 @@ Rules:
 - Do not treat a write step as permission to execute it.
 - If a decision depends on inspection results, describe a conditional
   decision step; do not invent its outcome.
-- Use unique step IDs and depends_on references to earlier steps.
+- Use unique step IDs.
+- Every depends_on entry MUST be a character-for-character copy of an
+  `id` already assigned to an earlier step in this same plan. Never
+  paraphrase, abbreviate or rename a step id when referencing it.
+- Before returning the plan, re-check every depends_on list against the
+  step ids you actually used.
 - Return only ExecutionPlan.
 """
 
 planner_model = model.with_structured_output(ExecutionPlan)
+
+MAX_PLANNER_ATTEMPTS = 3
 
 
 
@@ -65,21 +74,49 @@ async def planner_node(
         goal = AgentGoal.model_validate(raw_goal)
 
 
-        # Создаем Объект класса ExecutionPlan на основе system prompt и goal приведенный в строки
-        plan: ExecutionPlan = await planner_model.ainvoke(
-            [
-                SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=goal.model_dump_json(indent=2)
+        # История сообщений, к которой при повторных попытках добавляется
+        # текст ошибки валидации, чтобы модель исправила именно её.
+        messages: list[BaseMessage] = [
+            SystemMessage(content=PLANNER_SYSTEM_PROMPT),
+            HumanMessage(content=goal.model_dump_json(indent=2)),
+        ]
+
+        plan: ExecutionPlan | None = None
+        last_error: ValidationError | None = None
+
+        # Retry-цикл: LLM иногда "придумывает" depends_on, не совпадающий
+        # дословно ни с одним ранее созданным id шага. Отдаём модели точный
+        # текст ошибки pydantic и просим исправить именно это несоответствие.
+        for _ in range(MAX_PLANNER_ATTEMPTS):
+            if last_error is not None:
+                messages.append(
+                    HumanMessage(
+                        content=(
+                            "The previous ExecutionPlan failed validation:\n"
+                            f"{last_error}\n\n"
+                            "Fix only this issue: every depends_on value must be "
+                            "an exact copy of an id already used by an earlier "
+                            "step. Return the corrected ExecutionPlan."
+                        )
+                    )
                 )
-            ],
-            config=config
-        )
 
-        # Проверяем контракт через staticmethod validate_dependencies.
-        plan = ExecutionPlan.model_validate(plan)
+            raw_plan = await planner_model.ainvoke(messages, config=config)
 
-        # LangGraph перехватывает вывод и перезаписывает сериализованный dict в поля SREAgentState
+            try:
+                # Проверяем контракт через staticmethod validate_dependencies.
+                plan = ExecutionPlan.model_validate(raw_plan)
+                break
+
+            except ValidationError as exc:
+                last_error = exc
+                plan = None
+
+        # Данный exception перехватывается на уровне выше и записывается в атрибут planner_error SREAgentState
+        if plan is None:
+            raise last_error
+
+        # LangGraph перехватывает вывод и перезаписывает сериализованный dict в атрибуты SREAgentState
         return {
             "execution_plan": plan.model_dump(mode="json"),
             "current_step": None,

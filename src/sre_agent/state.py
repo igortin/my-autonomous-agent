@@ -271,7 +271,8 @@ class ExecutionPlan(BaseModel):
             if unknown_or_forward:
                 raise ValueError(
                     f"Step {step.id} depends on unavailable earlier steps: "
-                    f"{sorted(unknown_or_forward)}"
+                    f"{sorted(unknown_or_forward)}\n"
+                    f"current state seen: {seen}"   
                 )
 
             # Добавляем step ID
