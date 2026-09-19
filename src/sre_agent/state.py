@@ -1,5 +1,5 @@
 from typing import Literal, Any, Annotated
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator,  model_validator
 from langgraph.graph import MessagesState
 
 import operator
@@ -150,7 +150,11 @@ def keep_latest_value(left: str | None, right: str | None) -> str | None:
     """
     return right if right is not None else left
 
-# Контракт состояния (inheret Pydantic)
+
+
+# -------------------------
+#  Схема контракт ЦЕЛИ 
+# -------------------------
 class AgentGoal(BaseModel):
     """
     Structured representation of the desired environment state.
@@ -196,6 +200,90 @@ class AgentGoal(BaseModel):
     )
 
 
+
+
+# -------------------------
+#  Схема контракт ПЛАН 
+# -------------------------
+
+class PlanStep(BaseModel):
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(
+        min_length=1
+        )
+
+    description: str = Field(
+        min_length=1
+        )
+
+    agent: str = Field(
+        min_length=1
+        )
+
+    action_type: str = Field(
+        min_length=1
+        )
+
+    depends_on: list[str] = Field(
+        default_factory=list
+        )
+
+
+class ExecutionPlan(BaseModel):
+
+    model_config = ConfigDict(extra="forbid")
+
+    # список объектов шагов
+    steps: list[PlanStep] = Field(min_length=1)
+
+    # Decorator
+    @model_validator(mode="after")
+    def validate_dependencies(self) -> "ExecutionPlan":
+        """
+        staticmethod
+        проверяет каждый шаг, так как атрибут зависимость (depends_on) может ссылаться только на уже перечисленный шаг.
+        """
+        # Создаем список step IDs
+        ids = [step.id for step in self.steps]
+
+        # Проверка дублирования ID в списке
+        if len(ids) != len(set(ids)):
+            raise ValueError("Plan step IDs must be unique")
+
+        # Контейнер тип данных множество для step IDs 
+        seen: set[str] = set()
+
+        # Проверка step на указанние дублирования зависимостей
+        for step in self.steps:
+            if len(step.depends_on) != len(set(step.depends_on)):
+                raise ValueError(
+                    f"Duplicate dependencies in step {step.id}"
+                )
+
+            # Если пересекаются множества, то возращается пустое множество set()
+            # что означает на этом step в атрибуте depends_on записан объект step, который уже ранее на предыдущей итерации был записан в контейнер seen, 
+            # что означает корректную ссылку на существующий step, иначе ссылается на unavailable step
+            unknown_or_forward = set(step.depends_on) - seen
+
+            # Если НЕ пустое множество, то вызывется исключение 
+            if unknown_or_forward:
+                raise ValueError(
+                    f"Step {step.id} depends on unavailable earlier steps: "
+                    f"{sorted(unknown_or_forward)}"
+                )
+
+            # Добавляем step ID
+            seen.add(step.id)
+
+        # вощращаем Объект класса ExecutionPlan
+        return self
+
+# -------------------------
+#  Схема основная STATE 
+# -------------------------
+
 # total=False: чтобы не требовать все поля при вызове графа
 class SREAgentState(MessagesState, total=False):
 
@@ -203,13 +291,22 @@ class SREAgentState(MessagesState, total=False):
     Explicit state schema for SRE/Kubernetes assistant.
     """
 
-    # Structured desired state, stored separately from user messages.
-    # AgentGoal must be validated before being converted to dict.
+    # Желаемое конечное состояние AgentGoal и критерии успеха.
     goal: dict[str, Any] | None
 
     # Ошибка преобразования пользовательского запроса в AgentGoal.
     goal_interpreter_error: dict[str, Any] | None
-    
+
+    # Упорядоченные шаги достижения цели
+    execution_plan: dict[str, Any] | None
+
+    # Хранит текущий ID шага, а не его порядковый номер
+    current_step: str | None
+
+    # Диагностика планировщика
+    planner_error: dict[str, Any] | None
+
+
     # Полная long-term memory пользователя
     memory_context: dict[str, Any]
 
@@ -229,6 +326,7 @@ class SREAgentState(MessagesState, total=False):
 
     # Результат записи
     memory_updated: bool | None
+
     memory_update_error: dict[str, Any] | None
 
     # Описание почему выбран маршрут обновления памяти
@@ -249,7 +347,7 @@ class SREAgentState(MessagesState, total=False):
     #  Какой specialist agent обработал запрос
     active_agent: Annotated[str | None, keep_latest_value]
 
-    # Supervisor execution plan, полный набор специалистов, необходимых для выполнения запроса.
+    # Существующее решение Supervisor о специалистах текущего прохода
     required_agents: list[SupervisorAgentName]
 
     # Краткое объяснение выбора нескольких специалистов

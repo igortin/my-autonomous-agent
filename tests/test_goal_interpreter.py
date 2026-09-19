@@ -73,6 +73,9 @@ async def test_goal_interpreter_returns_structured_goal(
     fake_goal_model.ainvoke.assert_awaited_once()
 
 
+##############################################
+# Тест goal_interpreter_node обработки ошибки на LLM
+###############################################
 @pytest.mark.asyncio
 async def test_goal_interpreter_handles_model_error(monkeypatch):
 
@@ -109,6 +112,9 @@ async def test_goal_interpreter_handles_model_error(monkeypatch):
         "message": "LLM is unavailable"
     }
 
+##############################################
+# Тест goal_interpreter_node обработки ошибки пустого HumanMessage
+###############################################
 @pytest.mark.asyncio
 async def test_goal_interpreter_handles_missing_human_message():
     """

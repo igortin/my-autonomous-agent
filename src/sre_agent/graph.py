@@ -48,6 +48,11 @@ from sre_agent.autonomy.goal import (
     goal_interpreter_node,
 )
 
+from sre_agent.autonomy.planner import ( 
+    planner_node, 
+    route_after_planner,
+)
+
 ###################################################
 ## supervisor MODEL
 ###################################################
@@ -1377,9 +1382,6 @@ def publish_incident_report_node(state: SREAgentState):
         }
 
 
-
-
-
 ###################################################
 ## GRAPH
 ###################################################
@@ -1393,6 +1395,11 @@ def build_graph():
     supervisor_builder.add_node(
         "goal_interpreter_node",
         goal_interpreter_node,
+    )
+
+    supervisor_builder.add_node(
+        "planner_node",
+        planner_node,
     )
     
     supervisor_builder.add_node(
@@ -1466,11 +1473,26 @@ def build_graph():
         "goal_interpreter_node",
     )
 
+    # -------------------------
+    # Nodes Edge
+    # -------------------------
     supervisor_builder.add_edge(
         "goal_interpreter_node",
-        "supervisor_node",
+        "planner_node",
     )
 
+    # -------------------------
+    # Conditional Edge
+    # -------------------------
+
+    supervisor_builder.add_conditional_edges(
+        "planner_node",
+        route_after_planner,
+        {
+            "continue": "supervisor_node",
+            "stop": END,
+        },
+    )
 
     # -------------------------
     # Dynamic parallel fan-out (Send)
