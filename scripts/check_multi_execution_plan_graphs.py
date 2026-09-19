@@ -5,7 +5,9 @@ from sre_agent.graph import graph
 
 
 async def main() -> None:
-
+    """
+    Функция тестирует запуск последовательно 3 графов с созданием goal и execution_plan.
+    """
     config = {
         "configurable": {
             "thread_id": "week8-day4-execution-plans-check",
