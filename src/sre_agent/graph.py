@@ -48,8 +48,8 @@ from sre_agent.autonomy.goal import (
     goal_interpreter_node,
 )
 
-from sre_agent.autonomy.planner import ( 
-    planner_node, 
+from sre_agent.agents.planner_agent import (
+    planner_agent_node,
     route_after_planner,
 )
 
@@ -1398,8 +1398,8 @@ def build_graph():
     )
 
     supervisor_builder.add_node(
-        "planner_node",
-        planner_node,
+        "planner_agent_node",
+        planner_agent_node,
     )
     
     supervisor_builder.add_node(
@@ -1478,7 +1478,7 @@ def build_graph():
     # -------------------------
     supervisor_builder.add_edge(
         "goal_interpreter_node",
-        "planner_node",
+        "planner_agent_node",
     )
 
     # -------------------------
@@ -1486,7 +1486,7 @@ def build_graph():
     # -------------------------
 
     supervisor_builder.add_conditional_edges(
-        "planner_node",
+        "planner_agent_node",
         route_after_planner,
         {
             "continue": "supervisor_node",

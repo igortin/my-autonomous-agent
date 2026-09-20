@@ -203,9 +203,8 @@ class AgentGoal(BaseModel):
 
 
 # -------------------------
-#  Схема контракт ПЛАН 
+#  Схема Execution Plan 
 # -------------------------
-
 class PlanStep(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
@@ -281,13 +280,75 @@ class ExecutionPlan(BaseModel):
         # вощращаем Объект класса ExecutionPlan
         return self
 
+
+# -------------------------
+#  Схема контракт AvailableAgent 
+# -------------------------
+class AvailableAgent(BaseModel):
+    """
+    Agent is allowed to use in ExecutionPlan by Planner.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+
+    description: str = Field(min_length=1)
+
+
+# -------------------------
+#  Схема AvailableAction 
+# -------------------------
+class AvailableAction(BaseModel):
+    """
+    Action category available to Planner.
+
+    This is a planning capability, not an executable tool.
+
+    Описание разрешённой возможности, а не вызываемые функции.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+
+    agent: str = Field(min_length=1)
+
+    action_type: str = Field(min_length=1)
+
+    description: str = Field(min_length=1)
+
+    requires_approval: bool = False
+
+
+# -------------------------
+#   Контракт PlannerInput 
+# -------------------------
+class PlannerInput(BaseModel):
+    """
+    Complete input contract for Planner Agent.
+    """
+    goal: AgentGoal
+
+    # не должно быть результатом выполнения tools
+    environment_knowledge: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    available_agents: list[AvailableAgent] = Field(
+        min_length=1
+    )
+
+    available_actions: list[AvailableAction] = Field(
+        min_length=1
+    )
+
+
 # -------------------------
 #  Схема основная STATE 
 # -------------------------
 
 # total=False: чтобы не требовать все поля при вызове графа
 class SREAgentState(MessagesState, total=False):
-
     """
     Explicit state schema for SRE/Kubernetes assistant.
     """
@@ -297,6 +358,10 @@ class SREAgentState(MessagesState, total=False):
 
     # Ошибка преобразования пользовательского запроса в AgentGoal.
     goal_interpreter_error: dict[str, Any] | None
+
+    # Входной контекст Planner Agent:
+    # goal, environment knowledge, available agents and actions.
+    planner_input: dict[str, Any] | None
 
     # Упорядоченные шаги достижения цели
     execution_plan: dict[str, Any] | None
