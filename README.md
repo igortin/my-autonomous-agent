@@ -2,8 +2,6 @@
 
 ## Week 8 Lesson 4
 
-
-
 #### Goal
 - Схемы PlanStep и ExecutionPlan;
 - Нода planner_node;
