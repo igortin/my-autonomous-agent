@@ -342,6 +342,16 @@ class PlannerInput(BaseModel):
         min_length=1
     )
 
+# -------------------------
+#  Схема Termination contract
+# -------------------------
+TerminationReason = Literal[
+    "goal_reached",
+    "max_iterations_reached",
+    "unrecoverable_error",
+    "human_escalation_required",
+]
+
 
 # -------------------------
 #  Схема основная STATE 
@@ -371,6 +381,21 @@ class SREAgentState(MessagesState, total=False):
 
     # Диагностика планировщика
     planner_error: dict[str, Any] | None
+
+    # Количество полностью завершённых autonomous lifecycle iterations.
+    iteration_count: int
+
+    # Runtime-копия AgentGoal.max_iterations.
+    max_iterations: int
+
+    # Причина окончательного завершения lifecycle.
+    termination_reason: TerminationReason | None
+
+    # Признак, что агент не должен продолжать без решения человека.
+    human_escalation_required: bool
+
+    # Объяснение причины эскалации.
+    human_escalation_reason: str | None
 
 
     # Полная long-term memory пользователя

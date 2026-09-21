@@ -53,6 +53,17 @@ from sre_agent.agents.planner_agent import (
     route_after_planner,
 )
 
+from sre_agent.autonomy.lifecycle import (
+    advance_iteration_node,
+    goal_reached_node,
+    human_escalation_node,
+    initialize_lifecycle_node,
+    max_iterations_reached_node,
+    route_autonomous_lifecycle,
+    unrecoverable_error_node,
+)
+
+
 ###################################################
 ## supervisor MODEL
 ###################################################
@@ -918,51 +929,6 @@ def dispatch_specialists(state: SREAgentState):
     return sends
 
 
-###################################################
-## Condition Edge  route_after_evaluator
-###################################################
-def route_after_evaluator (state: SREAgentState
-) -> Literal[
-    "need_more_data",
-    "final_response",
-]:
-    """
-    Decide whether the investigation is complete
-    or another supervisor-controlled collection
-    round is required.
-    """
-
-    MAX_EVALUATION_RETRIES = 2
-
-    # Читаем dict as RCAQualityCheck
-    quality = state.get("rca_quality_check")
-
-    # Читаем количество возможных итераций
-    retry_count = state.get("evaluation_retry_count", 0)
-
-    # Раунд 1  (исследование вызывает специалистов)
-    # RCAQualityCheck не существует и количетсво циклов сбора доказательств меньше MAX_EVALUATION_RETRIES
-    if not quality:
-        if retry_count < MAX_EVALUATION_RETRIES:
-            # запускаем еще один раунд исследования
-            return "need_more_data"
-
-        # Termination condition
-        return "final_response"
-
-    # Раунд 2 (исследование продолжается и вызывает специалистов)
-    # Читаем RCAQualityCheck.needs_more_data значение тип данных bool
-    needs_more_data = quality.get("needs_more_data", True)
-
-    # Проверяем на условие Termination condition
-    if (needs_more_data and retry_count < MAX_EVALUATION_RETRIES):
-        return "need_more_data"
-
-    # Если needs_more_data False раунды исследования завершаются
-    return "final_response"
-
-
-
 
 
 ###################################################
@@ -1401,7 +1367,37 @@ def build_graph():
         "planner_agent_node",
         planner_agent_node,
     )
-    
+
+    supervisor_builder.add_node(
+        "initialize_lifecycle_node",
+        initialize_lifecycle_node,
+    )
+
+    supervisor_builder.add_node(
+        "advance_iteration_node",
+        advance_iteration_node,
+    )
+
+    supervisor_builder.add_node(
+        "goal_reached_node",
+        goal_reached_node,
+    )
+
+    supervisor_builder.add_node(
+        "max_iterations_reached_node",
+        max_iterations_reached_node,
+    )
+
+    supervisor_builder.add_node(
+        "unrecoverable_error_node",
+        unrecoverable_error_node,
+    )
+
+    supervisor_builder.add_node(
+        "human_escalation_node",
+        human_escalation_node,
+    )
+
     supervisor_builder.add_node(
         "supervisor_node",
         supervisor_node,
@@ -1489,20 +1485,36 @@ def build_graph():
         "planner_agent_node",
         route_after_planner,
         {
-            "continue": "supervisor_node",
-            "stop": END,
+            "continue": "initialize_lifecycle_node",
+            "stop": "unrecoverable_error_node",
         },
     )
 
     # -------------------------
+    # Nodes Edge
+    # -------------------------
+    supervisor_builder.add_edge(
+        "initialize_lifecycle_node",
+        "supervisor_node",
+    )
+
+
+    # -------------------------
     # Dynamic parallel fan-out (Send)
     # -------------------------
-
     supervisor_builder.add_conditional_edges(
         "supervisor_node",
         dispatch_specialists,
     )
 
+    # Поскольку add_conditional_edges вызван без mapping-словаря, 
+    # при ошибке на supervisor_node
+    # LangGraph воспринимает эту строку supervisor_error как имя узла 
+    # и направляет выполнение в узел
+    supervisor_builder.add_edge(
+        "supervisor_error",
+        END,
+    )
 
     # -------------------------
     # Fan-in
@@ -1542,15 +1554,26 @@ def build_graph():
     )
 
     # -------------------------
-    # Evaluation decision
+    # Edge Предохранитель
     # -------------------------
 
-    supervisor_builder.add_conditional_edges(
+    supervisor_builder.add_edge(
         "evaluator_node",
-        route_after_evaluator,
+        "advance_iteration_node",
+    )
+
+    # -------------------------
+    # Condition Edge after Evaluation
+    # -------------------------
+    supervisor_builder.add_conditional_edges(
+        "advance_iteration_node",
+        route_autonomous_lifecycle,
         {
-            "need_more_data": "prepare_retry_node",
-            "final_response": "final_rca_node",
+            "continue": "prepare_retry_node",
+            "goal_reached": "goal_reached_node",
+            "max_iterations_reached": "max_iterations_reached_node",
+            "unrecoverable_error": "unrecoverable_error_node",
+            "human_escalation_required": "human_escalation_node",
         },
     )
 
@@ -1560,6 +1583,32 @@ def build_graph():
     supervisor_builder.add_edge(
         "prepare_retry_node",
         "supervisor_node",
+    )
+
+    # -------------------------
+    # Edge Успешное достижение цели
+    # -------------------------
+    supervisor_builder.add_edge(
+        "goal_reached_node",
+        "final_rca_node",
+    )
+
+    # -------------------------
+    # Edge завершение при не достуижении цели
+    # -------------------------
+    supervisor_builder.add_edge(
+        "max_iterations_reached_node",
+        END,
+    )
+
+    supervisor_builder.add_edge(
+        "unrecoverable_error_node",
+        END,
+    )
+
+    supervisor_builder.add_edge(
+        "human_escalation_node",
+        END,
     )
 
     # -------------------------
@@ -1588,11 +1637,6 @@ def build_graph():
     # -------------------------
     supervisor_builder.add_edge(
         "approval_rejected_node",
-        END,
-    )
-
-    supervisor_builder.add_edge(
-        "supervisor_error",
         END,
     )
 
