@@ -2,7 +2,7 @@
 
 ## Week 8 Lesson 4
 
-#### Goal - Создание bounded loop
+#### Goal - Создание ограниченного Aвтономного Цикла
 
 Количество уже завершённых проходов никогда не может превысить `AgentGoal.max_iterations`.
 
@@ -12,7 +12,6 @@
 | max_iterations                 | Максимально разрешённое количество проходов в AgentGoal |
 | iteration_count                | Количество уже завершённых проходов loop                |
 | termination_reason             | Причина, по которой lifecycle завершён                  |
-| evaluation_retry_count         | Старый локальный счётчик повторов evaluator             |
 
 Одна итерация:
 ```
