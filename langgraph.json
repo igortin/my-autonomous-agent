@@ -2,6 +2,8 @@
   "$schema": "https://langgra.ph/schema.json",
   "dependencies": ["."],
   "graphs": {
-    "sre_agent": "./src/sre_agent/graph.py:graph"
-  }
+    "sre_agent": "./src/sre_agent/graph.py:graph",
+    "readonly_autonomous_agent": "./src/sre_agent/autonomy/readonly_graph.py:readonly_autonomous_graph"
+  },
+  "env": ".env"
 }

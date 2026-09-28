@@ -1,84 +1,106 @@
 # my-autonomous-agent
 
-## Week 8 Lesson 4
+## Week 8 Lesson 7
 
-#### Goal - Создание ограниченного Aвтономного Цикла
+#### Goal - Первый autonomous loop без write-actions
 
-Количество уже завершённых проходов никогда не может превысить `AgentGoal.max_iterations`.
-
-#### Cемантика счётчика
-| Поле                           | Значение                                                |
-|--------------------------------|---------------------------------------------------------|
-| max_iterations                 | Максимально разрешённое количество проходов в AgentGoal |
-| iteration_count                | Количество уже завершённых проходов loop                |
-| termination_reason             | Причина, по которой lifecycle завершён                  |
-
-Одна итерация:
+Cоединить:
 ```
-supervisor
-  → specialists
-  → aggregate
-  → evaluator
+ExecutionPlan → PlanStep → Tool → Observation → Verification
 ```
 
-Поэтому увеличивать iteration_count нужно после evaluator, а не в supervisor_node.
+Агент сможет самостоятельно:
+1. Преобразовать пользовательский запрос в AgentGoal.
+2. Составить диагностический план.
+3. Последовательно выполнить несколько read-only шагов.
+4. Сохранить фактические наблюдения.
+5. Проверить, достаточно ли данных для достижения informational goal.
+6. При нехватке данных перепланировать диагностику.
+7. Завершиться по достижении цели либо по одной из границ автономности из Дня 6.
 
 
+#### Целевой lifecycle
 
-#### Архитектура
+Проход по всем шагам одного `execution_plan` - это и есть одна завершённая итерация lifecycle.  
+```
+execution_plan → все steps → verifier
+```
+Поэтому после ноды `verifier` вызывайте существующий: `advance_iteration_node`
+
+`Replanner_node` создаст новый пересмотренный `new_execution_plan` для следующей итерации lifecycle
+
+
 ```mermaid
 flowchart TD
-    START([START]) --> GI[goal_interpreter_node]
-    GI --> PA[planner_agent_node]
-
-    PA --> C1{route_after_planner}
-    C1 -->|continue| IL[initialize_lifecycle_node]
-    C1 -->|stop| UE[unrecoverable_error_node]
-
-    IL --> SN[supervisor_node]
-
-    SN --> C2{{dispatch_specialists<br/>Send fan-out, no mapping}}
-    C2 -->|Send: kubernetes| K8S[kubernetes_agent_subgraph]
-    C2 -->|Send: memory| MEM[memory_agent_subgraph]
-    C2 -->|Send: runbook| RB[runbook_agent_node]
-    C2 -->|Send: chat| CHAT[chat_agent_node]
-    C2 -.->|raise/error → literal node name| SE[supervisor_error]
-
-    SE --> END1([END])
-    CHAT --> END2([END])
-
-    K8S --> AGG[aggregate_findings_node]
-    MEM --> AGG
-    RB --> AGG
-
-    AGG --> EV[evaluator_node]
-    EV --> AI[advance_iteration_node]
-
-    AI --> C3{route_autonomous_lifecycle}
-    C3 -->|continue| PR[prepare_retry_node]
-    C3 -->|goal_reached| GR[goal_reached_node]
-    C3 -->|max_iterations_reached| MI[max_iterations_reached_node]
-    C3 -->|unrecoverable_error| UE
-    C3 -->|human_escalation_required| HE[human_escalation_node]
-
-    PR --> SN
-
-    GR --> FR[final_rca_node]
-    MI --> END3([END])
-    UE --> END4([END])
-    HE --> END5([END])
-
-    FR --> PIR[publish_incident_report_node]
-
-    PIR --> C4{route_after_human_approval}
-    C4 -->|approved| END6([END])
-    C4 -->|rejected| AR[approval_rejected_node]
-
-    AR --> END7([END])
+    S["START"] --> GI["Goal Interpreter"]
+    GI --> P["Planner"]
+    P --> E["Executor"]
+    E --> O["Observer"]
+    O --> V["Verifier"]
+    V -->|Goal reached| OK["Success → END"]
+    V -->|Incomplete| R["Replanner"]
+    R --> E
+    V -->|Limit or error| STOP["Safe stop → END"]
 ```
-#### Важные архитектурные Механизм 
-| Механизм                       | Назначение                                     |
-|--------------------------------|------------------------------------------------|
-| max_iterations                 | Ограничение общей автономности                 |
-| termination_reason             | Объяснение завершения lifecycle                |
-| Human approval                 | Разрешение конкретного рискованного действия   |
+Ограничение: агент ничего не изменяет в Kubernetes. Разрешены только чтение ресурсов, событий и логов.
+
+
+#### Учебный диагностический сценарий
+
+```
+Определи причину, по которой pod bbox-1 в namespace colvir-test
+кластера desktop-docker-test находится в CrashLoopBackOff.
+Ничего не изменяй.
+```
+
+Пример ожидаемой цели:
+```
+AgentGoal(
+    description=(
+        "Determine why pod bbox-1 is in "
+        "CrashLoopBackOff"
+    ),
+    success_criteria=[
+        "The current pod state is observed",
+        "Recent container logs are collected",
+        "Related Kubernetes events are collected",
+        "The likely cause is supported by observable evidence",
+    ],
+    constraints=[
+        "Use read-only Kubernetes actions only",
+        "Do not restart, delete, patch or scale resources",
+        "Do not execute commands inside containers",
+    ],
+    max_iterations=3,
+)
+```
+
+#### Сделаем план исполняемым
+Нельзя заставлять Executor угадывать tool из поля description. Иначе executor снова превращается в planner.
+
+#### Security Boundaries
+> Whitelist Security Boundaries — программное ограничение.
+   - READ_ONLY_TOOL_REGISTRY
+   - FORBIDDEN_ACTION_TYPES
+
+
+> System prompt — это поведенческое ограничение.
+
+#### Вызов инструментов и нормализация
+Инструменты вызываются и возращают raw_result с разными типами данных:
+- str
+- dict
+- list 
+
+> Для обратботки результата на нодах Observer или Verifier требуется сначало провести `Нолрмализацию`.
+
+Процесс `нормализации` сырого результата, приводим результат к общей структуре/схеме и тогда дальше Observer или Verifier всегда знает что получит струткуру:
+```
+normalized_result = {
+    "step_id": step.id,
+    "tool_name": step.tool_name,
+    "success": True,
+    "data": raw_result,
+    "error": None,
+}
+```

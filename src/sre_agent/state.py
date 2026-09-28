@@ -108,6 +108,7 @@ class RCAQualityCheck(BaseModel):
     # полезное улучшение именно для control loop
     evaluation_summary: str
 
+
 # Контракт состояния
 class IncidentContext(BaseModel):
     """
@@ -200,31 +201,53 @@ class AgentGoal(BaseModel):
     )
 
 
-
-
 # -------------------------
-#  Схема Execution Plan 
+#  Схема PlanStep (machine-executable)
 # -------------------------
 class PlanStep(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # уникальный идентификатор шага
     id: str = Field(
         min_length=1
         )
 
+    # описание шага
     description: str = Field(
         min_length=1
         )
 
+    # назание агента
     agent: str = Field(
         min_length=1
         )
 
-    action_type: str = Field(
-        min_length=1
-        )
+    # тип действия
+    action_type: Literal[
+        "read",
+        "write", 
+        "verify",
+        ] = Field(
+            description="Only read and verify actions are allowed."
+    )
 
+    # имя инструмента например "get_pod_tool"
+    tool_name: str | None = Field(
+        default=None,
+        description=(
+            "Exact executable read-only tool name. "
+            "Verification steps may have no tool."
+        ),
+    )
+
+    # аргументы для инструмента например "cluster_name": "k8s-test-1",
+    tool_args: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Validated arguments for the selected tool.",
+    )
+
+    # список зависимостей step ID  
     depends_on: list[str] = Field(
         default_factory=list
         )
@@ -242,7 +265,7 @@ class ExecutionPlan(BaseModel):
     def validate_dependencies(self) -> "ExecutionPlan":
         """
         staticmethod
-        проверяет каждый шаг, так как атрибут зависимость (depends_on) может ссылаться только на уже перечисленный шаг.
+        проверяет каждый шаг, так как атрибут зависимость (depends_on) может ссылаться только на уже существующий шаг.
         """
         # Создаем список step IDs
         ids = [step.id for step in self.steps]
@@ -286,7 +309,7 @@ class ExecutionPlan(BaseModel):
 # -------------------------
 class AvailableAgent(BaseModel):
     """
-    Agent is allowed to use in ExecutionPlan by Planner.
+    Схема Агента используемого в PlannerInput.
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -300,11 +323,7 @@ class AvailableAgent(BaseModel):
 # -------------------------
 class AvailableAction(BaseModel):
     """
-    Action category available to Planner.
-
-    This is a planning capability, not an executable tool.
-
-    Описание разрешённой возможности, а не вызываемые функции.
+    Схема описания Action используемого в PlannerInput.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -321,23 +340,27 @@ class AvailableAction(BaseModel):
 
 
 # -------------------------
-#   Контракт PlannerInput 
+#  Схема PlannerInput 
 # -------------------------
 class PlannerInput(BaseModel):
     """
-    Complete input contract for Planner Agent.
+    Входной Контракт ожидаемый в Planner Agent.
     """
+
+    # Объект Цель со всеми атрибутами 
     goal: AgentGoal
 
-    # не должно быть результатом выполнения tools
+    # словать данных из памяти (не должно быть результатом выполнения tools)
     environment_knowledge: dict[str, Any] = Field(
         default_factory=dict
     )
 
+    # список возможных Агентов
     available_agents: list[AvailableAgent] = Field(
         min_length=1
     )
 
+    # список возможных Action
     available_actions: list[AvailableAction] = Field(
         min_length=1
     )
@@ -354,8 +377,71 @@ TerminationReason = Literal[
 
 
 # -------------------------
-#  Схема основная STATE 
+#  Схема Результат шага
 # -------------------------
+
+class StepObservation(BaseModel):
+    """
+    Фактический результат выполненного шага
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    # идентификатор шага
+    step_id: str = Field(min_length=1)
+
+    # название инструмента
+    tool_name: str = Field(min_length=1)
+
+    # результат
+    ok: bool
+
+    # краткое описание результата выполненного шага
+    summary: str = Field(min_length=1)
+
+    # данные собранные на шаге
+    data: dict[str, Any] = Field(default_factory=dict)
+
+    # хранение ошибки выполнения шага
+    error: str | None = None
+
+
+# -------------------------
+#  Схема проверки Goal
+# -------------------------
+
+class GoalVerification(BaseModel):
+    """
+    Оценка достаточности собранных наблюдений для достижения цели после выполнения нескольких шагов
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    # булевый признак достижения цели после выполнения шага
+    goal_reached: bool
+
+    # список критериев которые достигли указанных в goal.success_criteria
+    satisfied_criteria: list[str] = Field(
+        default_factory=list
+    )
+
+    # список критериев которые не достигли указанных в goal.success_criteria
+    missing_criteria: list[str] = Field(
+        default_factory=list
+    )
+
+    # список подтверждений
+    evidence: list[str] = Field(
+        default_factory=list
+    )
+
+    # сохранение причины
+    reason: str = Field(min_length=1)
+
+
+
+
+# ----------------------------------
+#  Схема состояния Агента (основная)
+# ----------------------------------
 
 # total=False: чтобы не требовать все поля при вызове графа
 class SREAgentState(MessagesState, total=False):
@@ -363,39 +449,56 @@ class SREAgentState(MessagesState, total=False):
     Explicit state schema for SRE/Kubernetes assistant.
     """
 
-    # Желаемое конечное состояние AgentGoal и критерии успеха.
+    # желаемое конечное состояние по схеме AgentGoal и критерии успеха.
     goal: dict[str, Any] | None
 
-    # Ошибка преобразования пользовательского запроса в AgentGoal.
+    # ошибка преобразования пользовательского запроса в схему AgentGoal.
     goal_interpreter_error: dict[str, Any] | None
 
-    # Входной контекст Planner Agent:
-    # goal, environment knowledge, available agents and actions.
+    # данные по схеме PlannerInput.
     planner_input: dict[str, Any] | None
 
-    # Упорядоченные шаги достижения цели
+    # упорядоченные шаги достижения цели.
     execution_plan: dict[str, Any] | None
 
-    # Хранит текущий ID шага, а не его порядковый номер
+    # текущий ID шага который сейчас выполняется.
     current_step: str | None
 
-    # Диагностика планировщика
+    # диагностика планировщика
     planner_error: dict[str, Any] | None
 
-    # Количество полностью завершённых autonomous lifecycle iterations.
+    # количество полностью завершённых lifecycle итераций.
     iteration_count: int
 
-    # Runtime-копия AgentGoal.max_iterations.
+    # предохранитель итераций (runtime-копия AgentGoal.max_iterations).
     max_iterations: int
 
-    # Причина окончательного завершения lifecycle.
+    # причина окончательного завершения lifecycle.
     termination_reason: TerminationReason | None
 
-    # Признак, что агент не должен продолжать без решения человека.
+    # признак, что агент не должен продолжать без решения человека.
     human_escalation_required: bool
 
-    # Объяснение причины эскалации.
+    # объяснение причины эскалации.
     human_escalation_reason: str | None
+
+    # уже завершённые шаги
+    completed_step_ids: list[str]
+
+    # сырой результат Executor до обработки Observer
+    pending_step_result: dict[str, Any] | None
+
+    # список нормализованные факты прошлых шагов по схеме StepObservation
+    observations: list[dict[str, Any]]
+
+    # последнее решение Verifier по схеме GoalVerification
+    verification: dict[str, Any] | None
+
+    # список из GoalVerification missing_criteria
+    replan_feedback: list[str]
+
+    # ошибка безопасного выполнения шага
+    execution_error: dict[str, Any] | None
 
 
     # Полная long-term memory пользователя

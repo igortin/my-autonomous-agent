@@ -20,106 +20,77 @@ from sre_agent.state import (
 
 
 ################################################
-# Реестр агентов
+# Реестр агентов на основе класса AvailableAgent
 ################################################
-AVAILABLE_AGENTS = [
+
+# Список Агентов для контракта PlannerInput
+READ_ONLY_AVAILABLE_AGENTS = [
     AvailableAgent(
         name="kubernetes",
-        description=(
-            "Inspects Kubernetes resources, performs approved Kubernetes "
-            "changes and verifies Kubernetes state."
-        ),
-    ),
-    AvailableAgent(
-        name="memory",
-        description=(
-            "Retrieves previously stored environment and project knowledge."
-        ),
-    ),
-    AvailableAgent(
-        name="runbook",
-        description=(
-            "Finds operational procedures relevant to the goal."
-        ),
-    ),
-    AvailableAgent(
-        name="human",
-        description=(
-            "Reviews and approves write or destructive operations."
-        ),
+        description="Performs read-only Kubernetes diagnostics.",
     ),
 ]
 
+
+
+
 ################################################
-# Реестр доступных действий 
+# Реестр разрешенных действий класса AvailableAction
 ################################################
 
-# описание разрешённой возможности для планирования
-AVAILABLE_ACTIONS = [
+# Список Action для контракта PlannerInput
+READ_ONLY_AVAILABLE_ACTIONS = [
     AvailableAction(
-        name="inspect_resource",
+        name="list_pods_tool",
         agent="kubernetes",
         action_type="read",
-        description=(
-            "Read the current state of a Kubernetes resource."
-        ),
+        description="List pods in a namespace.",
         requires_approval=False,
     ),
     AvailableAction(
-        name="inspect_pods",
+        name="get_pod_tool",
         agent="kubernetes",
         action_type="read",
-        description=(
-            "Inspect pods associated with a workload."
-        ),
+        description="Inspect one Kubernetes pod.",
         requires_approval=False,
     ),
     AvailableAction(
-        name="inspect_events",
+        name="get_pod_logs_tool",
         agent="kubernetes",
         action_type="read",
-        description=(
-            "Inspect Kubernetes events related to a resource."
-        ),
+        description="Read recent logs from one pod.",
         requires_approval=False,
     ),
     AvailableAction(
-        name="retrieve_runbook",
-        agent="runbook",
+        name="get_pod_events_tool",
+        agent="kubernetes",
         action_type="read",
-        description=(
-            "Retrieve a relevant operational runbook."
-        ),
+        description="Read Kubernetes events related to one pod.",
         requires_approval=False,
     ),
     AvailableAction(
-        name="request_approval",
-        agent="human",
-        action_type="approval",
-        description=(
-            "Request human approval before an operational change."
-        ),
+        name="list_nodes_tool",
+        agent="kubernetes",
+        action_type="read",
+        description="List Kubernetes nodes.",
         requires_approval=False,
     ),
     AvailableAction(
-        name="update_resource",
+        name="get_node_tool",
         agent="kubernetes",
-        action_type="write",
-        description=(
-            "Apply an approved change to a Kubernetes resource."
-        ),
-        requires_approval=True,
+        action_type="read",
+        description="Inspect one Kubernetes node.",
+        requires_approval=False,
     ),
     AvailableAction(
-        name="verify_resource",
+        name="get_node_events_tool",
         agent="kubernetes",
-        action_type="verify",
-        description=(
-            "Verify the final Kubernetes state against goal success criteria."
-        ),
+        action_type="read",
+        description="Read events related to one node.",
         requires_approval=False,
     ),
 ]
+
 
 ################################################
 # System Prompt Planner
@@ -175,10 +146,29 @@ Rules:
 
 15. If a later action depends on inspection results, create a decision step.
     Do not invent the future inspection result.
+
+16. This workflow is strictly read-only.
+
+17. Every executable step must use action_type="read".
+
+18. Use only exact tool names from available_actions.
+
+19. Put exact tool arguments into tool_args.
+
+20. Never create write, approval, shell, exec, restart, delete,
+    patch, scale, apply or create steps.
+
+21. Do not add a verification tool step. Goal verification is performed
+    separately by the Verifier node.
+
+22. Each plan should contain only diagnostic steps that are still required.
 """
 
+
+
+
 ################################################
-# Модель для Planner
+# Модель Planner
 ################################################
 
 # Модель обязана вернуть данные, соответствующие ExecutionPlan.
@@ -186,71 +176,55 @@ planner_model = model.with_structured_output(
     ExecutionPlan
 )
 
-# Определим количество попыток создания инстанса ExecutionPlan
-MAX_PLANNER_ATTEMPTS = 3
-
 
 ################################################
 # Helper функция создания контракта PlannerInput
 ################################################
-def build_planner_input(state: SREAgentState) -> PlannerInput:
-    """
-    Build validated PlannerInput from graph state.
+def build_planner_input(
+        state: SREAgentState
+) -> PlannerInput:
 
-    This function does not call an LLM or tools.
+    """
+    Функция создает объект класса PlannerInput на основе значения state.planner_input
+    или НОВЫЙ объект собранный в ручками.
     """
 
-    # Читаем цель из состояния
+    # Читаем цель из state
     raw_goal = state.get("goal")
 
+    # Проверяем цель не пустая
     if raw_goal is None:
         raise ValueError(
             "AgentGoal is missing from state"
         )
 
-    # Валидируем цель
+    # Валидируем полученную цель из state
     goal = AgentGoal.model_validate(raw_goal)
 
-    # Читаем входной контракт для planner из состояния
+    # Читаем входной контракт planner_input из state
     raw_planner_input = state.get("planner_input")
 
+    # Если значение не пустое
     if raw_planner_input is not None:
-        # Валидируем входной контракт для planner полученный из состояния
+
+        # Валидируем полученное значение raw_planner_input
         supplied_input = PlannerInput.model_validate(raw_planner_input)
 
-        # Сравниваем цель указанную в входном контракте для planner полученную из состояния и нашу цель
+        # Сравниваем planner_input.goal и полученную goal из state
         if supplied_input.goal != goal:
             raise ValueError("PlannerInput goal does not match state goal")
 
-        # если цели одинаковые
+        # Возращаем валидный объект класса PlannerInput созданный на основе значения в state.planner_input
         return supplied_input
 
+
+    # Возращаем НОВЫЙ собранный объект класса PlannerInput
     return PlannerInput(
         goal=goal,
         environment_knowledge={},
-        available_agents=AVAILABLE_AGENTS,
-        available_actions=AVAILABLE_ACTIONS,
+        available_agents=READ_ONLY_AVAILABLE_AGENTS,
+        available_actions=READ_ONLY_AVAILABLE_ACTIONS,
     )
-
-
-
-################################################
-# Helper функция создания входного LLM message для Planner
-################################################
-def build_planner_messages(
-    planner_input: PlannerInput,
-) -> list[BaseMessage]:
-    """
-    Convert PlannerInput into the LLM message contract and concatinate System Prompt.
-    """
-    return [
-        SystemMessage(
-            content=PLANNER_SYSTEM_PROMPT
-        ),
-        HumanMessage(
-            content=planner_input.model_dump_json(indent=2)
-        ),
-    ]
 
 
 ################################################
@@ -264,17 +238,25 @@ async def create_execution_plan(
     """
     Create and validate an ExecutionPlan.
 
-        This function:
+    This function:
     - calls only the LLM;
     - does not call operational tools;
     - does not mutate graph state;
     - returns a validated ExecutionPlan.
     """
 
-    # Конкатинация System Prompt и PlannerInput
-    messages = build_planner_messages(
-        planner_input
-    )
+    # Формируем состояние на основе System Prompt и PlannerInput (json строки)
+    messages = [
+        SystemMessage(
+            content=PLANNER_SYSTEM_PROMPT
+        ),
+        HumanMessage(
+            content=planner_input.model_dump_json(indent=2)
+        ),
+    ]
+
+    #  читаем из PlannerInput.goal значение
+    MAX_PLANNER_ATTEMPTS = planner_input.goal.max_iterations
 
     # контейнер для ошибки 
     last_error: Exception | None = None

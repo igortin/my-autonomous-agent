@@ -40,7 +40,7 @@ def expected_plan() -> ExecutionPlan:
                     "id": "determine_remediation",
                     "description": "Determine whether a replica change is required based on inspection results",
                     "agent": "kubernetes",
-                    "action_type": "decision",
+                    "action_type": "read",
                     "depends_on": [
                         "inspect_deployment",
                         "inspect_pods",
@@ -50,7 +50,7 @@ def expected_plan() -> ExecutionPlan:
                     "id": "request_approval",
                     "description": "Request human approval before changing deployment replicas",
                     "agent": "human",
-                    "action_type": "approval",
+                    "action_type": "read",
                     "depends_on": [
                         "determine_remediation"
                     ],
@@ -220,9 +220,9 @@ async def test_planner_receives_complete_context(monkeypatch, expected_plan):
                 "workload": "payment-api",
             },
 
-            "available_agents": [agent.model_dump(mode="json") for agent in planner_module.AVAILABLE_AGENTS],
+            "available_agents": [agent.model_dump(mode="json") for agent in planner_module.READ_ONLY_AVAILABLE_AGENTS],
 
-            "available_actions": [action.model_dump(mode="json") for action in planner_module.AVAILABLE_ACTIONS],
+            "available_actions": [action.model_dump(mode="json") for action in planner_module.READ_ONLY_AVAILABLE_ACTIONS],
         },
     }
 

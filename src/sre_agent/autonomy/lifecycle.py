@@ -24,11 +24,10 @@ def initialize_lifecycle_node(
     - execute plan steps;
     - inspect infrastructure.
     """
+    # Читаем цель из state 
+    raw_goal = state.get("goal")
 
-    # Читаем цель изи состояния 
-    goal_data = state.get("goal")
-
-    if not goal_data:
+    if not raw_goal:
         return {
             "iteration_count": 0,
             "max_iterations": 1,
@@ -37,7 +36,7 @@ def initialize_lifecycle_node(
 
     try:
         # Валидация цели
-        goal = AgentGoal.model_validate(goal_data)
+        goal = AgentGoal.model_validate(raw_goal)
 
         # LangGraph перехватывает вывод и записывает значения в атрибуты состояния SREAgentState
         return {
@@ -46,12 +45,24 @@ def initialize_lifecycle_node(
             "termination_reason": None,
             "human_escalation_required": False,
             "human_escalation_reason": None,
+            "completed_step_ids": [],
+            "pending_step_result": None,
+            "observations": [],
+            "verification": None,
+            "replan_feedback": [],
+            "execution_error": None,            
         }
     except Exception:
         return {
             "iteration_count": 0,
             "max_iterations": 1,
             "termination_reason": "unrecoverable_error",
+            "completed_step_ids": [],
+            "pending_step_result": None,
+            "observations": [],
+            "verification": None,
+            "replan_feedback": [],
+            "execution_error": None,
         }
 
 ############################
@@ -93,7 +104,6 @@ def advance_iteration_node(
 
 
 
-
 ################################
 # Инициализация lifecycle router
 ################################
@@ -104,6 +114,7 @@ LifecycleRoute = Literal[
     "unrecoverable_error",
     "human_escalation_required",
 ]
+
 
 ###################################
 # Helper функция для route_autonomous_lifecycle
@@ -188,6 +199,11 @@ def route_autonomous_lifecycle(
 
     return "continue"
 
+
+
+
+
+
 ######################################
 #  Node Цель достигнута
 ######################################
@@ -197,6 +213,8 @@ def goal_reached_node(
     return {
         "termination_reason": "goal_reached",
     }
+
+
 
 ######################################
 #  Node Достигнут лимит
@@ -218,6 +236,9 @@ def max_iterations_reached_node(
         ],
     }
 
+
+
+
 ######################################
 #  Node Невосстановимая ошибка
 ######################################
@@ -235,6 +256,13 @@ def unrecoverable_error_node(
             )
         ],
     }
+
+
+
+
+
+
+
 
 ######################################
 #  Node Требуется человек
