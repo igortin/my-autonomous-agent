@@ -3,8 +3,9 @@ from langchain_core.runnables import RunnableConfig
 
 from sre_agent.model import model
 from sre_agent.state import AgentGoal, SREAgentState
-from sre_agent.utils import get_latest_human_message
 
+from sre_agent.utils import get_latest_human_message
+import traceback
 
 GOAL_INTERPRETER_SYSTEM_PROMPT = """
 You are the Goal Interpreter of an autonomous SRE agent.
@@ -55,7 +56,7 @@ resource names or thresholds that are absent from the user request.
 
 Use the user's requested limit when it is explicitly provided.
 
-Otherwise use 5.
+Otherwise use 3.
 
 5. Separation of responsibilities
 
@@ -119,6 +120,8 @@ async def goal_interpreter_node(
         }
 
     except Exception as exc:
+        traceback.print_exc()
+
         return {
             "goal": None,
             "goal_interpreter_error": {

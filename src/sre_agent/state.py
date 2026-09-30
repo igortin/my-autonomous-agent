@@ -329,15 +329,15 @@ class AvailableAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-
     agent: str = Field(min_length=1)
-
     action_type: str = Field(min_length=1)
-
     description: str = Field(min_length=1)
-
     requires_approval: bool = False
 
+    # JSON Schema аргументов инструмента: planner берёт отсюда точные имена ключей для tool_args
+    args_schema: dict[str, Any] = Field(
+        default_factory=dict
+    )
 
 # -------------------------
 #  Схема PlannerInput 

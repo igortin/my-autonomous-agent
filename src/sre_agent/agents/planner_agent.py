@@ -18,6 +18,15 @@ from sre_agent.state import (
     SREAgentState,
 )
 
+from sre_agent.tools.kubernetes import (
+    get_node_events_tool,
+    get_node_tool,
+    get_pod_events_tool,
+    get_pod_logs_tool,
+    get_pod_tool,
+    list_nodes_tool,
+    list_pods_tool,
+)
 
 ################################################
 # Реестр агентов на основе класса AvailableAgent
@@ -46,6 +55,8 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="List pods in a namespace.",
         requires_approval=False,
+        args_schema=list_pods_tool.args_schema.model_json_schema(),
+
     ),
     AvailableAction(
         name="get_pod_tool",
@@ -53,6 +64,7 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="Inspect one Kubernetes pod.",
         requires_approval=False,
+        args_schema=get_pod_tool.args_schema.model_json_schema(),
     ),
     AvailableAction(
         name="get_pod_logs_tool",
@@ -60,6 +72,8 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="Read recent logs from one pod.",
         requires_approval=False,
+        args_schema=get_pod_logs_tool.args_schema.model_json_schema(),
+
     ),
     AvailableAction(
         name="get_pod_events_tool",
@@ -67,6 +81,7 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="Read Kubernetes events related to one pod.",
         requires_approval=False,
+        args_schema=get_pod_events_tool.args_schema.model_json_schema(),
     ),
     AvailableAction(
         name="list_nodes_tool",
@@ -74,6 +89,8 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="List Kubernetes nodes.",
         requires_approval=False,
+        args_schema=list_nodes_tool.args_schema.model_json_schema(),
+
     ),
     AvailableAction(
         name="get_node_tool",
@@ -81,6 +98,8 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="Inspect one Kubernetes node.",
         requires_approval=False,
+        args_schema=get_node_tool.args_schema.model_json_schema(),
+
     ),
     AvailableAction(
         name="get_node_events_tool",
@@ -88,6 +107,7 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         action_type="read",
         description="Read events related to one node.",
         requires_approval=False,
+        args_schema=get_node_events_tool.args_schema.model_json_schema(),
     ),
 ]
 
@@ -131,12 +151,15 @@ Rules:
 8. Do not invent cluster names, namespaces or resources that are absent
    from AgentGoal or environment_knowledge.
 
-9. Place read-only inspection before any write action.
+9. Every step must be a single tool call: tool_name is REQUIRED and must be
+   an exact name from available_actions.
 
-10. If the plan contains a write or destructive operation and an applicable
-    constraint requires approval, include an earlier human approval step.
+10. Never create decision, analysis, summary, approval or verification
+    steps without a tool. Analysis of results is done by the Verifier,
+    additional inspections are added later by the Replanner.
 
-11. Add a final verification step that checks the AgentGoal success criteria.
+11. Do not invent future inspection results. If an inspection may be needed
+    only depending on earlier results, leave it out of the plan.
 
 12. Preserve all AgentGoal constraints.
 
@@ -144,8 +167,7 @@ Rules:
 
 14. Every depends_on value must exactly match an earlier step ID.
 
-15. If a later action depends on inspection results, create a decision step.
-    Do not invent the future inspection result.
+15. Do not add conditional steps.
 
 16. This workflow is strictly read-only.
 
@@ -153,7 +175,9 @@ Rules:
 
 18. Use only exact tool names from available_actions.
 
-19. Put exact tool arguments into tool_args.
+19. Put tool arguments into tool_args using exactly the property names
+    from the action's args_schema. Include every required property.
+    Never rename arguments (for example, use "cluster_name", not "cluster").
 
 20. Never create write, approval, shell, exec, restart, delete,
     patch, scale, apply or create steps.
@@ -173,7 +197,9 @@ Rules:
 
 # Модель обязана вернуть данные, соответствующие ExecutionPlan.
 planner_model = model.with_structured_output(
-    ExecutionPlan
+    ExecutionPlan,
+    method="function_calling",              # включить механизм вызова функции для получения структурированного ответа на стороне OpenAI
+    strict=False,                           # отключение строгой проверки схемы на стороне OpenAI
 )
 
 
@@ -228,6 +254,53 @@ def build_planner_input(
 
 
 ################################################
+# Helper функция проверки read-only плана
+###############################################
+def validate_read_only_plan(
+    plan: ExecutionPlan,
+) -> ExecutionPlan:
+    """
+    Проверяет, что каждый шаг плана исполним executor в read-only режиме:
+    - action_type="read"
+    - tool_name из READ_ONLY_AVAILABLE_ACTIONS.
+
+    Шаги-"размышления" (decide/analyze/verify) без tool_name отклоняются,
+    чтобы LLM исправила план на повторной попытке, а не executor упал в рантайме.
+    """
+
+    allowed_tools = {
+        action.name 
+        for action in READ_ONLY_AVAILABLE_ACTIONS
+    }
+
+    errors: list[str] = []
+
+    for step in plan.steps:
+        if step.action_type != "read":
+            errors.append(
+                f"Step {step.id!r}: action_type must be 'read', "
+                f"got {step.action_type!r}"
+            )
+        if not step.tool_name:
+            errors.append(
+                f"Step {step.id!r}: tool_name is required."
+            )
+        elif step.tool_name not in allowed_tools:
+            errors.append(
+                f"Step {step.id!r}: unknown tool_name {step.tool_name!r}. "
+                f"Allowed: {sorted(allowed_tools)}"
+            )
+
+    if errors:
+        raise ValueError(
+            "ExecutionPlan is not executable in read-only mode:\n"
+            + "\n".join(errors)
+        )
+
+    return plan
+
+
+###############################################
 # Helper функция планирования и создания ExecutionPlan
 ###############################################
 async def create_execution_plan(
@@ -245,7 +318,7 @@ async def create_execution_plan(
     - returns a validated ExecutionPlan.
     """
 
-    # Формируем состояние на основе System Prompt и PlannerInput (json строки)
+    # Формируем messages на основе System Prompt и PlannerInput (json строки)
     messages = [
         SystemMessage(
             content=PLANNER_SYSTEM_PROMPT
@@ -255,7 +328,7 @@ async def create_execution_plan(
         ),
     ]
 
-    #  читаем из PlannerInput.goal значение
+    #  читаем из PlannerInput.goal значение max_iterations 
     MAX_PLANNER_ATTEMPTS = planner_input.goal.max_iterations
 
     # контейнер для ошибки 
@@ -265,13 +338,18 @@ async def create_execution_plan(
     for _ in range(MAX_PLANNER_ATTEMPTS):
         try:
 
+            # Вызываем LLM и создаем объект класса ExecutionPlan    
             raw_plan = await planner_model.ainvoke(
                 messages,
                 config=config,
             )
 
-            return ExecutionPlan.model_validate(raw_plan)
-        
+            # Валидируем план и создаем объект
+            plan = ExecutionPlan.model_validate(raw_plan)
+
+            # Проверим в функции что каждый step является read и прописан разрешенный tool_name
+            return validate_read_only_plan(plan)
+
         except Exception as exc:
             # Записываем текст ошибки в контейнер 
             last_error = exc
@@ -284,15 +362,18 @@ async def create_execution_plan(
                             f"{exc}\n\n"
                             "Return a corrected ExecutionPlan. "
                             "Every depends_on value must exactly match "
-                            "an earlier step ID."
+                            "an earlier step ID. "
+                            "Every step must have action_type=\"read\" and "
+                            "an exact tool_name from available_actions."
                     )
                 )
             )
 
-        if last_error is not None:
-            raise last_error
+    # Все попытки исчерпаны - пробрасываем последнюю ошибку
+    if last_error is not None:
+        raise last_error
 
-        raise RuntimeError("Planner did not produce an ExecutionPlan")
+    raise RuntimeError("Planner did not produce an ExecutionPlan")
 
 
 

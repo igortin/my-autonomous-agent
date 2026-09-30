@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 
 from sre_agent.agents.planner_agent import (
     READ_ONLY_AVAILABLE_ACTIONS,
+    validate_read_only_plan,
 )
 from sre_agent.model import model
 from sre_agent.state import (
@@ -19,7 +20,9 @@ from sre_agent.state import (
 
 # Инициализация LLM c структуированным выводом по схеме ExecutionPlan
 replanner_model = model.with_structured_output(
-    ExecutionPlan
+    ExecutionPlan,
+    method="function_calling",
+    strict=False,
 )
 
 
@@ -44,6 +47,9 @@ Rules:
 6. Use exact tool names and explicit tool_args.
 7. Do not invent resource names or environment facts.
 8. Every dependency must refer to an earlier step in the new plan.
+9. Every step must be a single tool call with action_type="read" and
+   a required tool_name. Never create decision, analysis or verification
+   steps without a tool.
 """
 
 #####################################
@@ -99,7 +105,9 @@ async def replanner_node(
         )
 
         # Валидация нового пересмотренного плана и создание объекта по схеме ExecutionPlan
-        new_execution_plan = ExecutionPlan.model_validate(revised_execution_plan)
+        new_execution_plan = validate_read_only_plan(
+            ExecutionPlan.model_validate(revised_execution_plan)
+        )
 
         return {
             # записываем новый пересмотренный execution_plan

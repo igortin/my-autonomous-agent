@@ -17,8 +17,8 @@ def require_env(name: str) -> str:
 class Settings:
     openai_api_key: str
     openai_model: str
-    # openai_base_url: str
     langsmith_tracing: bool
+    openai_base_url: str
 
 
 
@@ -33,18 +33,17 @@ def load_settings() -> Settings:
             "OPENAI_MODEL",
             "gpt-5-mini",
         ),
-
-        # openai_base_url=os.getenv(
-        #     "OPENAI_BASE_URL",
-        #     "http://100.113.179.69:8080/v1"
-        # ),
         langsmith_tracing=(
             os.getenv(
                 "LANGSMITH_TRACING",
-                "false"
+                "true"
             ).lower()
             == "true"
-        )
+        ),
+        openai_base_url=os.getenv(
+            "OPENAI_BASE_URL",
+            "https://api.openai.com/v1"
+        ),        
     )
 
 

@@ -1,5 +1,6 @@
 from sre_agent.state import ExecutionPlan, PlanStep, SREAgentState
 
+from pydantic import ValidationError
 
 from sre_agent.tools.kubernetes import (
     get_node_events_tool,
@@ -137,7 +138,7 @@ async def executor_node(
         if not step.tool_name:
             return {
                 "current_step": step.id,
-                "executor_error": {
+                "execution_error": {
                     "type": "missing_tool_name",
                     "message": "Executable step has no tool_name",
                 }
@@ -162,6 +163,25 @@ async def executor_node(
                     "Planner requested an unapproved tool"
                 ),
             }
+
+
+        # Проверяем аргументы шага по args_schema инструмента ДО вызова,
+        # чтобы ошибка planner'а стала execution_error, а не исключением в графе
+        try:
+            tool.args_schema.model_validate(step.tool_args)
+        except ValidationError as exc:
+            return {
+                "current_step": step.id,
+                "execution_error": {
+                    "type": "invalid_tool_args",
+                    "message": (
+                        f"Invalid tool_args for {step.tool_name!r}: "
+                        f"{exc.errors(include_url=False)}"
+                    ),
+                    "tool_args": step.tool_args,
+                },
+            }
+
 
         # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
         raw_result = await tool.ainvoke(step.tool_args)

@@ -21,59 +21,30 @@ def expected_plan() -> ExecutionPlan:
         {
             "steps": [
                 {
-                    "id": "inspect_deployment",
-                    "description": "Inspect the current state of deployment/payment-api",
+                    "id": "inspect_pods",
+                    "description": "List pods of payment-api",
                     "agent": "kubernetes",
                     "action_type": "read",
+                    "tool_name": "list_pods_tool",
+                    "tool_args": {
+                        "cluster_name": "k8s-test-1",
+                        "namespace": "payments",
+                    },
                     "depends_on": [],
                 },
                 {
-                    "id": "inspect_pods",
-                    "description": "Inspect pods belonging to payment-api",
+                    "id": "inspect_pod_events",
+                    "description": "Inspect events of payment-api pod",
                     "agent": "kubernetes",
                     "action_type": "read",
+                    "tool_name": "get_pod_events_tool",
+                    "tool_args": {
+                        "cluster_name": "k8s-test-1",
+                        "namespace": "payments",
+                        "pod_name": "payment-api-0",
+                    },
                     "depends_on": [
-                        "inspect_deployment"
-                    ],
-                },
-                {
-                    "id": "determine_remediation",
-                    "description": "Determine whether a replica change is required based on inspection results",
-                    "agent": "kubernetes",
-                    "action_type": "read",
-                    "depends_on": [
-                        "inspect_deployment",
-                        "inspect_pods",
-                    ],
-                },
-                {
-                    "id": "request_approval",
-                    "description": "Request human approval before changing deployment replicas",
-                    "agent": "human",
-                    "action_type": "read",
-                    "depends_on": [
-                        "determine_remediation"
-                    ],
-                },
-                {
-                    "id": "update_deployment",
-                    "description": "Set deployment/payment-api desired replicas to 3 if required",
-                    "agent": "kubernetes",
-                    "action_type": "write",
-                    "depends_on": [
-                        "request_approval"
-                    ],
-                },
-                {
-                    "id": "verify_deployment",
-                    "description": (
-                        "Verify spec.replicas == 3 and "
-                        "status.readyReplicas == 3"
-                    ),
-                    "agent": "kubernetes",
-                    "action_type": "verify",
-                    "depends_on": [
-                        "update_deployment"
+                        "inspect_pods"
                     ],
                 },
             ]
@@ -316,3 +287,64 @@ async def test_planner_stops_after_goal_interpreter_error():
             "Goal Interpreter failed"
         ),
     }
+
+###############################################
+# Unit Test planner отклоняет шаг без tool_name
+# и повторяет запрос к LLM с текстом ошибки
+###############################################
+@pytest.mark.asyncio
+async def test_planner_retries_when_step_has_no_tool_name(monkeypatch, expected_plan):
+
+    # план с шагом-"размышлением" без tool_name, как в реальном прогоне
+    plan_with_decision_step = ExecutionPlan.model_validate(
+        {
+            "steps": [
+                *expected_plan.model_dump(mode="json")["steps"],
+                {
+                    "id": "decide_additional_inspection",
+                    "description": "Decide whether additional inspection is needed",
+                    "agent": "kubernetes",
+                    "action_type": "read",
+                    "depends_on": ["inspect_pod_events"],
+                },
+            ]
+        }
+    )
+
+    fake_planner_model = AsyncMock()
+
+    # первая попытка - невалидный план, вторая - корректный
+    fake_planner_model.ainvoke.side_effect = [
+        plan_with_decision_step,
+        expected_plan,
+    ]
+
+    monkeypatch.setattr(
+        planner_module,
+        "planner_model",
+        fake_planner_model,
+    )
+
+    goal = AgentGoal(
+        description="Diagnose payment-api pod",
+        success_criteria=["Root cause is identified"],
+        constraints=["Read-only"],
+        max_iterations=3,
+    )
+
+    result = await planner_module.planner_agent_node(
+        {
+            "goal": goal.model_dump(mode="json"),
+            "goal_interpreter_error": None,
+        },
+        config={"configurable": {"user_id": "test-user", "thread_id": "test-thread"}},
+    )
+
+    assert result["planner_error"] is None
+    assert result["execution_plan"] == expected_plan.model_dump(mode="json")
+    assert fake_planner_model.ainvoke.await_count == 2
+
+    # во второй вызов LLM получила сообщение с ошибкой по конкретному шагу
+    retry_messages = fake_planner_model.ainvoke.await_args_list[1].args[0]
+    assert "decide_additional_inspection" in retry_messages[-1].content
+    assert "tool_name is required" in retry_messages[-1].content

@@ -107,9 +107,23 @@ normalized_result = {
 
 
 #### Тест
-Запрос
+
+Выполнить команду:
 ```
-Определи причину, по которой pod bbox-1 в namespace colvit-test
+export OPENAI_API_KEY="sk-proj-..."; 
+export OPENAI_MODEL="gpt-5-mini"; 
+export LANGSMITH_TRACING=true; 
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+```
+
+Запустить LangGraph server
+```
+langgraph dev
+```
+
+Создай запрос:
+```
+Определи причину, по которой pod bbox-1 в namespace colvir-test
 кластера docker-desktop находится в CrashLoopBackOff.
 Ничего не изменяй.
 ```
