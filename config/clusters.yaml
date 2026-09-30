@@ -1,5 +1,5 @@
 clusters:
-  docker-desktop-test:
+  docker-desktop:
     context: docker-desktop
     kubeconfig_file: 
     default_namespace: default

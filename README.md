@@ -104,3 +104,12 @@ normalized_result = {
     "error": None,
 }
 ```
+
+
+#### Тест
+Запрос
+```
+Определи причину, по которой pod bbox-1 в namespace colvit-test
+кластера docker-desktop находится в CrashLoopBackOff.
+Ничего не изменяй.
+```
