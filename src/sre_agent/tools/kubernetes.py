@@ -70,7 +70,7 @@ class KubernetesToolInput(BaseModel):
 
     container_name: Optional[str] = Field(default=None, description="container_name in running Pod")
 
-    tail_lines: Optional[int] = Field(default=10, ge=1, le=20, description="number of lines in Pod's log")
+    tail_lines: Optional[int] = Field(default=10, ge=1, le=300, description="number of lines in Pod's log")
 
     # decoractor после парсинга всех полей проверить, что для pod/node операций переданы обязательные параметры.
     @model_validator(mode="after")
@@ -443,7 +443,7 @@ class GetPodLogsToolInput(BaseModel):
     tail_lines: int = Field(
         default=10,
         ge=1,
-        le=20,
+        le=300,
         description="Number of recent lines to return."
     )
 
