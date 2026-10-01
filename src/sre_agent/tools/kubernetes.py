@@ -1,12 +1,11 @@
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field, ValidationError, ConfigDict, model_validator, field_validator
+from pydantic import BaseModel, Field, model_validator
 
-from typing import TypedDict, Literal, Optional, Any, Annotated
-from pydantic import model_validator
+from typing import Literal, Optional
 
 from kubernetes.client.exceptions import ApiException
 from dataclasses import dataclass
-import sys, json, yaml, re, os
+import yaml, os
 from pathlib import Path
 from kubernetes import client, config as kube_config
 
@@ -505,10 +504,6 @@ class GetNodeEventsToolInput(BaseModel):
     )
 
 
-class ListKubernetesClustersToolInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
 ###########################################################
 ## LangChain Tools 
 ###########################################################
@@ -667,47 +662,6 @@ def get_node_events_tool(
         action="get_node_events",
         node_name=node_name,
     )
-
-@tool(
-name_or_callable = "list_kubernetes_clusters_tool",
-args_schema = ListKubernetesClustersToolInput,
-return_direct=False,
-)
-def list_kubernetes_clusters_tool() -> dict:
-    """
-    List Kubernetes cluster available to the assistant.
-
-    Read data from KUBERNETES_CLUSTERS.
-    """
-
-    clusters = [ 
-                    { 
-                        "cluster_name": alias,
-                        "context": config.context,
-                        "description": config.description,
-                        "default_namespace": config.default_namespace,
-                    }
-                    for alias, config in KUBERNETES_CLUSTERS.items()
-    ]
-
-    # LangGraph append dict as ToolMessage.content to state
-    return {
-        "ok": True,
-        "count": len(clusters),
-        "clusters": clusters,
-    }
-
-# Создаем список LangChain Tool objects
-KUBERNETES_TOOLS = [
-    list_pods_tool,
-    get_pod_tool,
-    get_pod_logs_tool,
-    get_pod_events_tool,
-    list_nodes_tool,
-    get_node_tool,
-    get_node_events_tool,
-    list_kubernetes_clusters_tool,
-]
 
 ###########################################################
 ## HELPER load_kubernetes_clusters 

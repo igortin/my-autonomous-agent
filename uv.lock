@@ -287,18 +287,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dydantic"
-version = "0.0.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/08/c5/2d097e5a4816b15186c1ae06c5cfe3c332e69a0f3556dc6cee2d370acf2a/dydantic-0.0.8.tar.gz", hash = "sha256:14a31d4cdfce314ce3e69e8f8c7c46cbc26ce3ce4485de0832260386c612942f", size = 8115, upload-time = "2025-01-29T20:36:13.771Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/7c/a1b120141a300853d82291faf0ba1a95133fa390e4b7d773647b69c8c0f4/dydantic-0.0.8-py3-none-any.whl", hash = "sha256:cd0a991f523bd8632699872f1c0c4278415dd04783e36adec5428defa0afb721", size = 8637, upload-time = "2025-01-29T20:36:12.217Z" },
-]
-
-[[package]]
 name = "frozenlist"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -581,20 +569,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ca/57/b07b96353f902aa1bdbe00e878e3a12a137977d03a962479785576aa8ec9/kubernetes-36.0.3.tar.gz", hash = "sha256:36993ed25ce59b789c9341473a228fcf268504a2fec7c2b2b1531d73072e5ce7", size = 2337528, upload-time = "2026-07-13T20:38:12.128Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/30/a96d47df739689ac0001ade0afefc16e3b477fc2fb426b568515fdc8afce/kubernetes-36.0.3-py2.py3-none-any.whl", hash = "sha256:8fde9241c4b298e6374a069dcf728359b4e72c2fb29489a975ba4e1c047cf10f", size = 4618066, upload-time = "2026-07-13T20:38:10.172Z" },
-]
-
-[[package]]
-name = "langchain"
-version = "1.4.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "langchain-core" },
-    { name = "langgraph" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/aa/0fcaf5d7dbebcf7d0eb74293dca5aee6f0558242731f4dee4a800cc2431d/langchain-1.4.3.tar.gz", hash = "sha256:aed5c1a7cd581f70ddc076b75fdbcbae8031b8373983f86efd287aa70798abc2", size = 738607, upload-time = "2026-09-28T20:17:24.38Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/03/8cc027f9d297473de94f134546dae2bfca255161ebbda988522fc509e1d5/langchain-1.4.3-py3-none-any.whl", hash = "sha256:0334066939dd1c7551889727ed2d09a72dea7a6aed2193ffb61817fb658d8921", size = 164708, upload-time = "2026-09-28T20:17:22.978Z" },
 ]
 
 [[package]]
@@ -1361,14 +1335,12 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "kubernetes" },
-    { name = "langchain" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langsmith" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "trustcall" },
 ]
 
 [package.optional-dependencies]
@@ -1379,7 +1351,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "kubernetes" },
-    { name = "langchain" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langsmith" },
@@ -1387,7 +1358,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "trustcall" },
 ]
 provides-extras = ["dev"]
 
@@ -1445,20 +1415,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/f6/80760e98a08e6649d2d68afb6035af713121dfb615acce8c4f73810ec438/tiktoken-0.14.0-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:86f66c85e796f5d05d5c4a60ec1d40cbfebc47a32464053528c797163fa9ab89", size = 1251479, upload-time = "2026-08-17T19:49:36.419Z" },
     { url = "https://files.pythonhosted.org/packages/c5/84/50966fb6918a0fb9b32721277e5342bf729a2d74350074d662fbedf9772e/tiktoken-0.14.0-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:149d97453c4c98c04b081d64a85e635921269b532710d6faf81e9e82b790e7d3", size = 1316673, upload-time = "2026-08-17T19:49:37.756Z" },
     { url = "https://files.pythonhosted.org/packages/35/5e/9b01afd037bfa22a0033963fa091e0f75b6fb15cd85bffb42ff86e697323/tiktoken-0.14.0-cp315-cp315t-win_amd64.whl", hash = "sha256:561e7580f84a79859af1ef6f676968e9030fcc3fe195700b15235bca64f009c9", size = 987929, upload-time = "2026-08-17T19:49:38.947Z" },
-]
-
-[[package]]
-name = "trustcall"
-version = "0.0.39"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "dydantic" },
-    { name = "jsonpatch" },
-    { name = "langgraph" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/72/4cdb54a31952827e8b58e11ea286bbfe2d3aa0ffb77a2f87dbc1c7ea77d3/trustcall-0.0.39.tar.gz", hash = "sha256:ec315818224501b9537ce6b7618dbc21be41210c6e8f2e239169a5a00912cd6e", size = 38637, upload-time = "2025-04-14T22:02:50.857Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/3a/58de925a104ce554fc250b833fe76401c7822aa8d65f2002cb53195e6c64/trustcall-0.0.39-py3-none-any.whl", hash = "sha256:d7da42e0bba816c0539b2936dfed90ffb3ea8d789e548e73865d416f8ac4ee64", size = 30073, upload-time = "2025-04-14T22:02:49.402Z" },
 ]
 
 [[package]]

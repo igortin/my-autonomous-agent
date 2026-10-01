@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from langchain_core.messages import (
-    BaseMessage,
     HumanMessage,
     SystemMessage,
 )
 from langchain_core.runnables import RunnableConfig
-from pydantic import ValidationError
 
 from sre_agent.model import model
 from sre_agent.state import (

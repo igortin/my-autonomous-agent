@@ -1,11 +1,8 @@
-from typing import Literal
-
 from langchain_core.messages import AIMessage
 
 from sre_agent.state import (
     AgentGoal,
     SREAgentState,
-    TerminationReason,
 )
 
 ############################
@@ -104,20 +101,8 @@ def advance_iteration_node(
 
 
 
-################################
-# Инициализация lifecycle router
-################################
-LifecycleRoute = Literal[
-    "continue",
-    "goal_reached",
-    "max_iterations_reached",
-    "unrecoverable_error",
-    "human_escalation_required",
-]
-
-
 ###################################
-# Helper функция для route_autonomous_lifecycle
+# Helper функция для route_after_verification
 ###################################
 def has_unrecoverable_error(
     state: SREAgentState,
@@ -130,77 +115,8 @@ def has_unrecoverable_error(
         [
             state.get("goal_interpreter_error"),
             state.get("planner_error"),
-            state.get("supervisor_error"),
-            state.get("aggregation_error"),
         ]
     )
-
-
-###################################
-# Conditional edge
-###################################
-def route_autonomous_lifecycle(
-    state: SREAgentState,
-) -> LifecycleRoute:
-    """
-    Decide whether the autonomous lifecycle may continue.
-
-    Priority:
-    1. already terminated;
-    2. unrecoverable error;
-    3. human escalation;
-    4. goal reached;
-    5. iteration limit;
-    6. continue.
-    """
-
-    # читаем значение из состояния 
-    termination_reason = state.get("termination_reason")
-
-    if termination_reason == "unrecoverable_error":
-        return "unrecoverable_error"
-
-    if termination_reason == "human_escalation_required":
-        return "human_escalation_required"
-
-    if termination_reason == "goal_reached":
-        return "goal_reached"
-
-    if termination_reason == "max_iterations_reached":
-        return "max_iterations_reached"
-
-    # Вызов helper функции при невозможности безопасного продолжения lifecycle
-    if has_unrecoverable_error(state):
-        return "unrecoverable_error" 
-
-    # читаем значение из состояния
-    if state.get("human_escalation_required", False):
-        return "human_escalation_required"
-
-    # читаем значение из состояния
-    quality = state.get("rca_quality_check")
-
-    # Проверяем объект класса RCAQualityCheck и его атрибута 
-    if quality and not quality.get("needs_more_data", True):
-        return "goal_reached"
-
-    # читаем значение текщей итерации из состояния
-    iteration_count = state.get("iteration_count", 0)
-
-    # читаем значение порога из состояния 
-    max_iterations = state.get("max_iterations")
-
-    if max_iterations is None or max_iterations < 1:
-        return "unrecoverable_error"
-
-    # Проверка превышения порога
-    if iteration_count >= max_iterations:
-        return "max_iterations_reached"
-
-    return "continue"
-
-
-
 
 
 

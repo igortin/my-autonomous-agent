@@ -22,12 +22,10 @@ from sre_agent.autonomy.observer import (
 from sre_agent.autonomy.verifier import (
     route_after_verification,
 )
-from sre_agent.state import SREAgentState
 
 import pytest
 
 from langchain_core.messages import HumanMessage
-import json
 
 #########################################
 # Tools

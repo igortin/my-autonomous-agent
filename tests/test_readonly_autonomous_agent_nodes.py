@@ -7,7 +7,7 @@ from sre_agent.autonomy.observer import observer_node
 
 from sre_agent.autonomy import verifier 
 
-from sre_agent.autonomy.verifier import verifier_model, verifier_node, route_after_verification
+from sre_agent.autonomy.verifier import verifier_node, route_after_verification
 
 from sre_agent.state import GoalVerification
 

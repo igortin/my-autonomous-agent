@@ -7,12 +7,10 @@ name = "sre-agent"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "langchain",
     "langgraph",
     "langsmith",
     "langchain-openai",
     "pydantic",
-    "trustcall",
     "kubernetes",
     "pyyaml",
     "python-dotenv",
