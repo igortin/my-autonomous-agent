@@ -106,18 +106,44 @@ def advance_iteration_node(
 ###################################
 def has_unrecoverable_error(
     state: SREAgentState,
-) -> bool:
-    """
-    Return True only for errors that make safe continuation impossible.
-    """
+) -> dict:
 
-    return any(
-        [
-            state.get("goal_interpreter_error"),
-            state.get("planner_error"),
-        ]
-    )
+    # контейнер ошибок
+    sections = []
 
+     # Показываем исходные ошибки с указанием этапа.
+    for field, stage in (
+        ("goal_interpreter_error", "Определение цели"),
+        ("planner_error", "Планирование"),
+        ("execution_error", "Выполнение"),
+    ):
+        
+        # Читаем ошибки возникшие при работе 
+        error = state.get(field, None)
+
+        # Добавляем найденную ошибку в контейнер
+        if error:
+            error_type = error.get("type", "unknown_error")
+            message = error.get("message", "Описание отсутствует")
+
+            sections.append(
+                f"{stage}: {error_type}\n{message}"
+            )
+
+
+    if sections:
+        return {
+            "termination_reason": "unrecoverable_error",
+            "messages": [
+                AIMessage(content=(
+                        "Автономный lifecycle остановлен из-за ошибки, "
+                        "после которой безопасное продолжение невозможно."
+                        "\n\n".join(sections
+                        )))
+            ],
+        }
+
+    return {}
 
 
 ######################################

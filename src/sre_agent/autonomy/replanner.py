@@ -6,11 +6,15 @@ from langchain_core.messages import (
 
 from langchain_core.runnables import RunnableConfig
 
+from typing import Literal
+
 from sre_agent.agents.planner_agent import (
     READ_ONLY_AVAILABLE_ACTIONS,
     validate_read_only_plan,
 )
+
 from sre_agent.model import model
+
 from sre_agent.state import (
     AgentGoal,
     ExecutionPlan,
@@ -61,7 +65,7 @@ async def replanner_node(
         config: RunnableConfig,
 ) -> dict:
     """
-    Replanner должен создать пересмотренный план c только дополнительными диагностическами шагами.
+    Replanner должен создать пересмотренный новый план c только дополнительными диагностическами шагами для новой итерации lifecycle.
     """
 
     try:    
@@ -129,6 +133,22 @@ async def replanner_node(
                 "type": "replanner_error",
                 "message": str(exc),
             },
+            "execution_plan": None,                 # Удаляем старый план созданный на planner_agent_node (не replanner)
         }
 
+#####################################
+# CE route_after_replanner
+#####################################
+def route_after_replanner(
+    state: SREAgentState,
+) -> Literal["continue", "stop"]:
+    """
+    Функция проверяет наличие нового пересмотренного плана и ошибок его генерации
+    """
+    if state.get("planner_error"):
+        return "stop"
 
+    if not state.get("execution_plan"):
+        return "stop"
+
+    return "continue"

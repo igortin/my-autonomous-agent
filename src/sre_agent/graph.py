@@ -6,7 +6,6 @@ from sre_agent.autonomy.goal import (
     goal_interpreter_node,
 )
 
-
 from sre_agent.agents.planner_agent import (
     planner_agent_node,
     route_after_planner,
@@ -26,9 +25,10 @@ from sre_agent.autonomy.executor import executor_node
 from sre_agent.autonomy.observer import observer_node, route_after_observer
 
 from sre_agent.autonomy.verifier import verifier_node, route_after_verification
-
-
-from sre_agent.autonomy.replanner import replanner_node
+from sre_agent.autonomy.replanner import (
+    replanner_node,
+    route_after_replanner,
+)
 
 ###################################################
 ## GRAPH
@@ -186,13 +186,17 @@ def build_graph():
     )
    
     #------------------------------
-    # EDGE
+    # CE
     #------------------------------
-    builder.add_edge(
+    builder.add_conditional_edges(
         "replanner_node",
-        "executor_node",
+        route_after_replanner,
+        {
+            "continue": "executor_node",
+            "stop": "unrecoverable_error_node",
+        },
     )
-
+    
     # -------------------------
     # Edge завершение при не достуижении цели
     # -------------------------
