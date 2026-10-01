@@ -126,8 +126,68 @@ def has_unrecoverable_error(
 def goal_reached_node(
     state: SREAgentState,
 ) -> dict:
+    """Завершить lifecycle и показать пользователю результат."""
+
+    # Читаем из state
+    goal = state.get("goal") or {}                              # объект по схеме AgentGoal сериализоваанный в JSON
+    verification = state.get("verification") or {}              # объект по схеме GoalVerification сериализоваанный в JSON
+    observations = state.get("observations") or []              # список объектов по схеме StepObservation сериализоваанных в JSON
+    
+    sections = ["Диагностическая цель достигнута."]             # контейнер для выводов в AIMessage
+
+
+    # Добавляем в контейнер
+    if description := goal.get("description"):
+        sections.append(f"Цель: {description}")
+
+    # Добавляем рассуждения в контейнер
+    if reason := verification.get("reason"):
+        sections.append(f"Результат проверки:\n{reason}")
+
+    # Добавляем в контейнер удовлетворенные критерии успешности
+    satisfied = verification.get("satisfied_criteria") or []
+    if satisfied:
+        sections.append(
+            "Подтверждённые критерии:\n"
+            + "\n".join(f"- {criterion}" for criterion in satisfied)
+        )
+
+    # Добавляем в контейнер подтверждения
+    evidence = verification.get("evidence") or []
+    if evidence:
+        sections.append(
+            "Подтверждения:\n"
+            + "\n".join(f"- {item}" for item in evidence)
+        )
+
+    # Добавляем в контейнер результаты шагов
+    if observations:
+        observation_lines = []
+
+        for observation in observations:
+            status = (
+                "Успешно"
+                if observation.get("ok")
+                else "Ошибка"
+            )
+            tool_name = observation.get("tool_name", "unknown")
+            summary = observation.get("summary", "")
+
+            observation_lines.append(
+                f"- {tool_name}: {status}. {summary}"
+            )
+
+        sections.append(
+            "Собранные наблюдения:\n"
+            + "\n".join(observation_lines)
+        )
+
+    # LangGraph добавляет в state 
     return {
         "termination_reason": "goal_reached",
+        "messages": [
+            AIMessage(content="\n\n".join(sections))
+        ],
     }
 
 

@@ -56,7 +56,7 @@ resource names or thresholds that are absent from the user request.
 
 Use the user's requested limit when it is explicitly provided.
 
-Otherwise use 3.
+Otherwise use 5.
 
 5. Separation of responsibilities
 
@@ -117,6 +117,7 @@ async def goal_interpreter_node(
         return {
             "goal": goal.model_dump(mode="json"),
             "goal_interpreter_error": None,
+            "planner_input": None,
         }
 
     except Exception as exc:
@@ -128,5 +129,6 @@ async def goal_interpreter_node(
                 "type": "goal_interpreter_structured_output_error",
                 "message": str(exc),
             },
+            "planner_input": None,
         }
     
