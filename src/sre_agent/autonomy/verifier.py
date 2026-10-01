@@ -34,7 +34,7 @@ Rules:
 7. Tool execution success does not automatically mean goal success.
 8. goal_reached=true only when every success criterion is supported.
 9. If a criterion requires data that the read-only tools cannot provide
-   (for example more than 200 log lines, logs of a previous container run,
+   (for example more than 20 log lines, logs of a previous container run,
    or saving artifacts), treat the closest achievable evidence as
    sufficient for that criterion and explain this in the reasoning.
    Do not request replanning for capabilities the agent does not have.

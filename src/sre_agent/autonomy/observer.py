@@ -17,20 +17,27 @@ def observer_node(
 ) -> dict:
 
     """"
-    Наблюдатель приводит в актуальное state после вызова Tool на execution_node.
+    Нормализовать результат Executor.
+
+    Наблюдатель приводит в актуальное state после вызова Tool на Executor.
     
     Приводит атрибуты state в актуальное и корректное состояние, 
-    поскольку вызывали Tool и получили результаты на предыдущем шаге в execution_node.
+    поскольку вызывали Tool и получили результаты на предыдущем шаге в Executor.
 
     Отвественость:
     - Интерпретировать результаты выполения Tool
     - Актуализировать state
     """
-        
-    # Читаем данные записанные в state.pending_step_result на executor_node
+
+    # Провереям наличие ошибок на Executor и ее заменяем её вторичной ошибкой Observer.
+    if state.get("execution_error"):
+        return {}
+
+ 
+    # Читаем данные записанные в state.pending_step_result как результата предыдущего step на Executor.
     pending = state.get("pending_step_result")
 
-    # Проверяем наличие результата полученного на executor_node
+    # Проверяем нет ни результата предыдущего step, ни исходной ошибки на Executor.
     if not pending:
         return {
             "execution_error": {
@@ -39,13 +46,13 @@ def observer_node(
             }
         }
 
-    # Читаем step в формате JSON строки выполннего на executor_node
+    # Читаем step в формате JSON строки выполннего на Executor
     step = pending["step"]
 
-    # Читаем фактический результат выполенения step на executor_node  
+    # Читаем фактический результат выполенения step на Executor  
     raw_result = pending["raw_result"]
 
-    # Читаем из фактического результатат код выполнения Tool  
+    # Читаем return code выполнения Tool  
     ok = bool(raw_result.get("ok", False))
 
 
@@ -81,13 +88,13 @@ def observer_node(
     )
 
 
-    # Читаем нормализованные факты прошлых шагов из state и добавляем нормализованный факт
+    # Читаем нормализованные факты прошлых шагов из state и добавляем новый нормализованный факт предыдущего step на Executor.
     observations = [
         *(state.get("observations")),
         observation.model_dump(mode="json")
     ]
 
-    # Читаем выполенные step IDs и добавляем еще один выполненный на execution_node 
+    # Читаем выполенные step IDs и добавляем еще один предыдущий step ID выполненный на Executor. 
     completed_step_ids = [
         *state.get("completed_step_ids", []),
         step["id"],

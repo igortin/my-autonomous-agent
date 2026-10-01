@@ -41,8 +41,8 @@ Rules:
 2. Plan only the missing diagnostic work.
 3. Do not repeat a successfully completed step unless the observation
    explicitly shows that retrying is useful.
-4. Use only allowed read-only tools.
-5. Never create write, delete, patch, scale, restart, exec, create,
+4. Every executable step must use action_type="read".
+5. Never create write, verify, delete, patch, scale, restart, exec, create,
    apply or approval steps.
 6. Use exact tool names and explicit tool_args.
 7. Do not invent resource names or environment facts.
@@ -130,3 +130,5 @@ async def replanner_node(
                 "message": str(exc),
             },
         }
+
+
