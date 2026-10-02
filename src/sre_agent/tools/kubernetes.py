@@ -70,7 +70,7 @@ class KubernetesToolInput(BaseModel):
         description="Kubernetes action to execute"
     )
 
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias, for example "
@@ -99,8 +99,8 @@ class KubernetesToolInput(BaseModel):
     @model_validator(mode="after")
     def validate_required_fields(self):
         if self.action:
-            if not self.cluster_name:
-                raise ValueError("cluster_name is required")
+            if not self.cluster_alias:
+                raise ValueError("cluster_alias is required")
 
         if self.action in {"get_pod", "get_pod_logs", "get_pod_events"}:
             if not self.pod_name:
@@ -112,30 +112,37 @@ class KubernetesToolInput(BaseModel):
     
         return self
 
+
 ###########################################################
-## Класс UnknownKubernetesClusterError (ошибка выбора Kubernetes кластера)
+## Helper функция нормализации имени кластера
 ###########################################################
-class UnknownKubernetesClusterError(ValueError):
-    """Raised when a cluster alias is not registered."""
+def normalize_cluster_alias(alias: str) -> str:
+    """
+    Проверка наличия имени кластера и нормализация наименования
+    """
+    if not isinstance(alias, str) or not alias.strip():
+        raise ValueError(
+            "Kubernetes cluster alias must be a non-empty string"
+        )
+
+    return alias.strip().lower()
 
 ###########################################################
 ## Helper функция Resolver кластера
 ###########################################################
-def resolver_kubernetes_cluster(cluster_name: str) -> KubernetesClusterConfig:
+def resolver_kubernetes_cluster(cluster_alias: str) -> KubernetesClusterConfig:
     """
     Resolve a logical cluster alias to object KubernetesClusterConfig
     """
 
-    normalized_name = cluster_name.strip().lower()
+    normalized_name = normalize_cluster_alias(cluster_alias)
 
     cluster_config = KUBERNETES_CLUSTERS.get(normalized_name)
 
     if cluster_config is None:
-        raise UnknownKubernetesClusterError(
-            f"Unknown Kubernetes cluster: "
-            f"{cluster_name!r}. "
-            f"Available clusters: "
-            f"{KUBERNETES_CLUSTERS}"
+        raise ValueError(
+            f"Unknown Kubernetes cluster alias: {normalized_name!r}."
+            "Use a registered cluster alias."
         )
 
     return cluster_config
@@ -145,7 +152,9 @@ def resolver_kubernetes_cluster(cluster_name: str) -> KubernetesClusterConfig:
 ## Helper функции для внутреннего вызова Kubernetes action
 ###########################################################
 
-def create_kubernetes_core_v1_api(cluster_name: str) -> tuple[
+def create_kubernetes_core_v1_api(
+        cluster_alias: str
+) -> tuple[
     KubernetesClusterConfig,
     client.ApiClient,
     client.CoreV1Api,
@@ -155,7 +164,7 @@ def create_kubernetes_core_v1_api(cluster_name: str) -> tuple[
     """
 
     # Возращает объект класса KubernetesClusterConfig
-    cluster_config = resolver_kubernetes_cluster(cluster_name)
+    cluster_config = resolver_kubernetes_cluster(cluster_alias)
 
     configuration = client.Configuration()
 
@@ -199,7 +208,11 @@ def create_kubernetes_core_v1_api(cluster_name: str) -> tuple[
 
 
 
-def _run_kubernetes_action(action: str, cluster_name: str, **kwargs) -> dict:
+def _run_kubernetes_action(
+        action: str, 
+        cluster_alias: str, 
+        **kwargs
+) -> dict:
     """
     Internal helper.
 
@@ -212,14 +225,16 @@ def _run_kubernetes_action(action: str, cluster_name: str, **kwargs) -> dict:
     args = KubernetesToolInput.model_validate(
         {
             "action": action,
-            "cluster_name": cluster_name,
+            "cluster_alias": cluster_alias,
             **kwargs,
         }
     )
 
     return _execute_kubernetes_api(args)
 
-def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
+def _execute_kubernetes_api(
+        args: KubernetesToolInput
+) -> dict:
     """
     Internal helper.
 
@@ -235,12 +250,12 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
     try:
         # Инициалзируем KubernetesClusterConfig, Kubernetes API client, client
         cluster_config, api_client, v1 = create_kubernetes_core_v1_api(
-            cluster_name=args.cluster_name
+            cluster_alias=args.cluster_alias
         )
 
         # Создаем метаданные для нормализации вывода
         result_metadata = {
-            "cluster_name": cluster_config.alias,
+            "cluster_alias": cluster_config.alias,
             "cluster_context": cluster_config.context
         }
 
@@ -279,7 +294,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
                 "ok": True,
                 **result_metadata,
                 "action": args.action,
-                "cluster_name": args.cluster_name,
+                "cluster_alias": args.cluster_alias,
                 "namespace": namespace,
                 "pods": [
                     {
@@ -442,7 +457,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
 ###########################################################
 
 class ListPodsToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,                                            # значит обязательное поле и значение по default отсутствует
         description=(
             "Logical Kubernetes cluster alias."
@@ -461,7 +476,7 @@ class ListPodsToolInput(BaseModel):
 
 
 class GetPodToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias. "
@@ -485,7 +500,7 @@ class GetPodToolInput(BaseModel):
 
 
 class GetPodLogsToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias. "
@@ -521,7 +536,7 @@ class GetPodLogsToolInput(BaseModel):
 
 
 class GetPodEventsToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias. "
@@ -545,7 +560,7 @@ class GetPodEventsToolInput(BaseModel):
 
 
 class ListNodesToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,                                           # значит обязательное поле и значение по default отсутствует
         description=(
             "Logical Kubernetes cluster alias. "
@@ -554,7 +569,7 @@ class ListNodesToolInput(BaseModel):
 
 
 class GetNodeToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias. "
@@ -568,7 +583,7 @@ class GetNodeToolInput(BaseModel):
 
 
 class GetNodeEventsToolInput(BaseModel):
-    cluster_name: str = Field(
+    cluster_alias: str = Field(
         ...,
         description=(
             "Logical Kubernetes cluster alias. "
@@ -593,7 +608,7 @@ class GetNodeEventsToolInput(BaseModel):
     return_direct=False
 )
 def list_pods_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     namespace: Optional[str] = None,  
 ) -> dict:
     """
@@ -602,7 +617,7 @@ def list_pods_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="list_pods",
         namespace=namespace, 
     )
@@ -614,7 +629,7 @@ def list_pods_tool(
     return_direct=False
 )
 def get_pod_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     pod_name: str = None, 
     namespace: Optional[str] = None,
 ) -> dict:
@@ -624,7 +639,7 @@ def get_pod_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="get_pod",
         pod_name=pod_name,
         namespace=namespace,
@@ -637,7 +652,7 @@ def get_pod_tool(
     return_direct=False
 )
 def get_pod_logs_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     pod_name: str = None, 
     namespace: Optional[str] = None,
     container_name: Optional[str] = None, 
@@ -649,7 +664,7 @@ def get_pod_logs_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="get_pod_logs",
         pod_name=pod_name,
         namespace=namespace,
@@ -663,7 +678,7 @@ def get_pod_logs_tool(
     return_direct=False
 )
 def get_pod_events_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     pod_name: str = None, 
     namespace: Optional[str] = None,
 ) -> dict:
@@ -673,7 +688,7 @@ def get_pod_events_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="get_pod_events",
         pod_name=pod_name,
         namespace=namespace,
@@ -686,7 +701,7 @@ def get_pod_events_tool(
     return_direct=False
 )
 def list_nodes_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
 ) -> dict:
     """
     List Kubernetes cluster nodes.
@@ -694,7 +709,7 @@ def list_nodes_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="list_nodes",
     )
 
@@ -705,7 +720,7 @@ def list_nodes_tool(
     return_direct=False
 )
 def get_node_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     node_name: str = None
     ) -> dict:
     """
@@ -714,7 +729,7 @@ def get_node_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="get_node",
         node_name=node_name,
     )
@@ -726,7 +741,7 @@ def get_node_tool(
     return_direct=False
 )
 def get_node_events_tool(
-    cluster_name: str = None,
+    cluster_alias: str = None,
     node_name: str = None
     ) -> dict:
     """
@@ -735,7 +750,7 @@ def get_node_events_tool(
     """
 
     return _run_kubernetes_action(
-        cluster_name = cluster_name,
+        cluster_alias = cluster_alias,
         action="get_node_events",
         node_name=node_name,
     )
@@ -753,17 +768,50 @@ def load_kubernetes_clusters(config_path: str) -> dict[str, KubernetesClusterCon
         # возращает dict
         raw_yaml = yaml.safe_load(file)
 
-    # Возращаем множество set объектов KubernetesClusterConfig
-    return {
-        alias: KubernetesClusterConfig(
-            alias = alias,
-            context = config.get("context"),
-            kubeconfig_file = config.get("kubeconfig_file"),
-            default_namespace = config.get("default_namespace", "default"),
-            description = config.get("description", "")
+    # Проверка типа данных
+    if not isinstance(raw_yaml, dict):
+        raise ValueError("clusters.yaml must contain a mapping")
+
+
+    # Читаем список объектов класса KubernetesClusterConfig сериализыанные в dict
+    raw_clusters = raw_yaml.get("clusters")
+
+    # Инициализируем контейнер
+    registry: dict[str, KubernetesClusterConfig] = {}
+
+    # Итерируемся по списку объектов класса KubernetesClusterConfig 
+    for raw_alias, cluster_settings in raw_clusters.items():
+        
+        # Нормализация алиаса
+        alias = normalize_cluster_alias(raw_alias)
+
+
+        # Проверка на дибликацию 
+        if alias in registry:
+            raise ValueError(
+                f"Duplicate Kubernetes cluster alias "
+                f"after normalization: {alias!r}"
+            )
+
+        # Проверка алиас значение не пустое
+        if not isinstance(cluster_settings, dict):
+            raise ValueError(
+                f"Cluster {alias!r}: configuration must be a mapping"
+            )
+
+        # Добавление в контейнер 
+        registry[alias] = KubernetesClusterConfig(
+            alias=alias,
+            context=cluster_settings.get("context"),
+            kubeconfig_file=cluster_settings.get("kubeconfig_file"),
+            default_namespace=cluster_settings.get(
+                "default_namespace",
+                "default",
+            ),
+            description=cluster_settings.get("description", ""),
         )
-        for alias, config in raw_yaml["clusters"].items()
-    }
+
+    return registry
 
 
 def default_kubernetes_clusters_config_path() -> str:
