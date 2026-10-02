@@ -48,12 +48,18 @@ Rules:
 4. Every executable step must use action_type="read".
 5. Never create write, verify, delete, patch, scale, restart, exec, create,
    apply or approval steps.
-6. Use exact tool names and explicit tool_args.
-7. Do not invent resource names or environment facts.
-8. Every dependency must refer to an earlier step in the new plan.
-9. Every step must be a single tool call with action_type="read" and
-   a required tool_name. Never create decision, analysis or verification
-   steps without a tool.
+6. Do not invent resource names or environment facts.
+7. Every dependency must refer to an earlier step in the new plan.
+8. Every step must contain exactly one AgentAction in its action field.
+
+Use:
+- action.action_id: unique within the new plan;
+- action.tool: exact tool name from available_actions;
+- action.arguments: exact argument names from the tool's args_schema;
+- action.expected_result: expected information from this inspection;
+- action.risk_level: "read".
+
+Never create analysis or verification steps without an operational tool.
 """
 
 #####################################

@@ -49,9 +49,44 @@ class AgentGoal(BaseModel):
         ),
     )
 
+# -------------------------
+#  Схема AgentAction (намерение)
+# -------------------------
+class AgentAction(BaseModel):
+    """
+    Официальное намерение задействовать один оперативный инструмент.
+    """
+    model_config = ConfigDict(
+        extra="forbid",                         # отклоняет неизвестные поля
+        str_strip_whitespace=True,              # убирает пробелы по краям строк
+    )
+
+    action_id: str = Field(
+        min_length=1,
+        description="Identifier of this action within the execution plan.",
+    )
+
+    tool: str = Field(
+        min_length=1,
+        description="Exact tool name from the available action catalog.",
+    )
+
+    arguments: dict[str, Any] = Field(
+        description="Explicit arguments for the selected tool.",
+    )
+
+    expected_result: str = Field(
+        min_length=1,
+        description=(
+            "Expected information or effect of the action. "
+            "This is an expectation, not an observed result."
+        ),
+    )
+
+    risk_level: Literal["read", "low", "medium", "high"]
 
 # -------------------------
-#  Схема PlanStep (machine-executable)
+#  Схема PlanStep
 # -------------------------
 class PlanStep(BaseModel):
 
@@ -81,20 +116,8 @@ class PlanStep(BaseModel):
             description="Only read and verify actions are allowed."
     )
 
-    # имя инструмента например "get_pod_tool"
-    tool_name: str | None = Field(
-        default=None,
-        description=(
-            "Exact executable read-only tool name. "
-            "Verification steps may have no tool."
-        ),
-    )
-
-    # аргументы для инструмента например "cluster_name": "k8s-test-1",
-    tool_args: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Validated arguments for the selected tool.",
-    )
+    # Намерение 
+    action: AgentAction
 
     # список зависимостей step ID  
     depends_on: list[str] = Field(
@@ -102,6 +125,9 @@ class PlanStep(BaseModel):
         )
 
 
+# -------------------------
+#  Схема ExecutionPlan
+# -------------------------
 class ExecutionPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
@@ -113,8 +139,9 @@ class ExecutionPlan(BaseModel):
     @model_validator(mode="after")
     def validate_dependencies(self) -> "ExecutionPlan":
         """
-        staticmethod
-        проверяет каждый шаг, так как атрибут зависимость (depends_on) может ссылаться только на уже существующий шаг.
+        staticmethod проверяет каждый шаг, 
+        так как атрибут зависимость (depends_on) может ссылаться 
+        только на уже существующий шаг.
         """
         # Создаем список step IDs
         ids = [step.id for step in self.steps]
@@ -123,7 +150,16 @@ class ExecutionPlan(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("Plan step IDs must be unique")
 
-        # Контейнер тип данных множество для step IDs 
+        # Создаем список намерений - action IDs
+        action_ids = [step.action.action_id for step in self.steps]
+        
+        # Определеям дублирование action IDs в плане
+        if len(action_ids) != len(set(action_ids)):
+            raise ValueError(
+                "Action IDs must be unique within an execution plan"
+            )
+
+        # Контейнер для step IDs - тип данных множество 
         seen: set[str] = set()
 
         # Проверка step на указанние дублирования зависимостей
@@ -148,6 +184,8 @@ class ExecutionPlan(BaseModel):
 
             # Добавляем step ID
             seen.add(step.id)
+
+
 
         # вощращаем Объект класса ExecutionPlan
         return self

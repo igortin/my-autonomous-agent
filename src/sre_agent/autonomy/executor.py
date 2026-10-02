@@ -12,6 +12,10 @@ from sre_agent.tools.kubernetes import (
     list_pods_tool,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #####################################
 # Helper Функция выбора следующего шага 
 #####################################
@@ -85,6 +89,7 @@ FORBIDDEN_ACTION_TYPES = {
     "exec",
     "create",
     "apply",
+    "verify",
 }
 
 
@@ -96,7 +101,6 @@ async def executor_node(
 ) -> dict:
     """"
     Node Executor
-    
     Вызывает Tool и записывает фактический результат в state.pending_step_result 
 
     Отвественость:
@@ -105,6 +109,8 @@ async def executor_node(
     - получить raw result
     """
     
+    step = None
+
     try:
         # Определяем СЛУДУЮЩИЙ шаг
         step = select_next_executable_step(state)
@@ -116,7 +122,9 @@ async def executor_node(
                 "execution_error": None,
             }
 
-        # Реестр READ_ONLY_AVAILABLE_ACTIONS поддерживает только "read" операции в функции create_execution_plan() в planner_agent
+        # Определяем AgentAction в СЛУДУЮЩЕМ шаге
+        action = step.action
+
         if step.action_type != "read":
             return {
                 "current_step": step.id,
@@ -134,18 +142,25 @@ async def executor_node(
                 ),
             }
 
-        # Проверка атрибут c наименование инструмента пустой
-        if not step.tool_name:
+        if action.risk_level != "read":
             return {
                 "current_step": step.id,
+                "pending_step_result": None,
                 "execution_error": {
-                    "type": "missing_tool_name",
-                    "message": "Executable step has no tool_name",
-                }
+                    "type": "forbidden_risk_level",
+                    "message": (
+                        f"Risk level {action.risk_level!r} "
+                        "is forbidden in read-only mode"
+                    ),
+                },
+                "human_escalation_required": True,
+                "human_escalation_reason": (
+                    "AgentAction is not classified as read-only"
+                ),
             }
 
-        # Получаем инструмент из реестра указанного шаге в execution_plan
-        tool = READ_ONLY_TOOL_REGISTRY.get(step.tool_name)
+        # Получаем инструмент из реестра на основе AgentAction
+        tool = READ_ONLY_TOOL_REGISTRY.get(action.tool)
 
         # Проверка на отсутствия инструмента 
         if tool is None:
@@ -168,23 +183,36 @@ async def executor_node(
         # Проверяем аргументы шага по args_schema (напрмер схема ListPodsToolInput) инструмента ДО вызова,
         # чтобы ошибка planner'а стала execution_error, а не исключением в графе
         try:
-            tool.args_schema.model_validate(step.tool_args)
+            tool.args_schema.model_validate(action.arguments)
+            
         except ValidationError as exc:
             return {
                 "current_step": step.id,
                 "execution_error": {
                     "type": "invalid_tool_args",
                     "message": (
-                        f"Invalid tool_args for {step.tool_name!r}: "
+                        f"Invalid arguments for {action.tool!r}: "
                         f"{exc.errors(include_url=False)}"
                     ),
                     "tool_args": step.tool_args,
                 },
             }
 
+        # iteration_count counts completed on lifecycle iterations.
+        # The currently executing iteration is therefore count + 1.
+        iteration = state.get("iteration_count", 0) + 1
+
+        
+        # This log record is emitted BEFORE tool invocation.
+        logger.info(
+            "agent_action_before_execution iteration=%s step_id=%s action=%s",
+            iteration,
+            step.id,
+            action.model_dump_json(),
+        )
 
         # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
-        raw_result = await tool.ainvoke(step.tool_args)
+        raw_result = await tool.ainvoke(action.arguments)
 
         # нормализация сырого результата raw_result, приводим результат к общей структуре/схеме.
         return {
@@ -198,6 +226,7 @@ async def executor_node(
 
     except Exception as exc:
         return {
+            "current_step": step.id if step is not None else None,
             "pending_step_result": None,
             "execution_error": {
                 "type": "executor_error",

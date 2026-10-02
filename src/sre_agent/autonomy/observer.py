@@ -49,6 +49,10 @@ def observer_node(
     # Читаем step в формате JSON строки выполннего на Executor
     step = pending["step"]
 
+    action = step["action"]
+    tool_name = action["tool"]
+
+
     # Читаем фактический результат выполенения step на Executor  
     raw_result = pending["raw_result"]
 
@@ -59,14 +63,14 @@ def observer_node(
     # Создаем переменные для объекта класса StepObservation
     if ok:
         summary = (
-            f"Tool {step['tool_name']} completed "
+            f"Tool {tool_name} completed "
             f"for step {step['id']}"
         )
 
         error = None
     else:
         summary = (
-            f"Tool {step['tool_name']} failed "
+            f"Tool {tool_name} failed "
             f"for step {step['id']}"
         )
 
@@ -80,7 +84,7 @@ def observer_node(
     # Создаем новый объект фактического результата выполненного step на execution_node
     observation = StepObservation(
         step_id=step["id"],
-        tool_name=step["tool_name"],
+        tool_name=tool_name,
         ok=ok,
         summary=summary,
         data=raw_result,

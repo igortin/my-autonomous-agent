@@ -149,11 +149,28 @@ Rules:
 8. Do not invent cluster names, namespaces or resources that are absent
    from AgentGoal or environment_knowledge.
 
-9. Every step must be a single tool call: tool_name is REQUIRED and must be
-   an exact name from available_actions.
+9. Every step must contain exactly one AgentAction in its action field.
+
+For each AgentAction:
+
+- action_id must be non-empty and unique within this execution plan;
+- tool must exactly match a name from available_actions;
+- arguments must use the exact property names from the selected
+  action's args_schema and include all required properties;
+- expected_result must describe the information expected from the tool,
+  not invented findings or a claim that execution has already happened;
+- risk_level must be "read".
+
+Every step must have action_type="read".
+
+
+Never include tool_name or tool_args: executable details belong
+inside the action object.
+
+Do not call operational tools. Return only ExecutionPlan.
 
 10. Never create decision, analysis, summary, approval or verification
-    steps without a tool. Analysis of results is done by the Verifier,
+    steps. Analysis of results is done by the Verifier,
     additional inspections are added later by the Replanner.
 
 11. Do not invent future inspection results. If an inspection may be needed
@@ -171,22 +188,14 @@ Rules:
 
 17. Every executable step must use action_type="read".
 
-18. Use only exact tool names from available_actions.
-
-19. Put tool arguments into tool_args using exactly the property names
-    from the action's args_schema. Include every required property.
-    Never rename arguments (for example, use "cluster_name", not "cluster").
-
-20. Never create write, approval, shell, exec, restart, delete,
+18. Never create write, verify, approval, shell, exec, restart, delete,
     patch, scale, apply or create steps.
 
-21. Do not add a verification tool step. Goal verification is performed
+20. Do not add a verification tool step. Goal verification is performed
     separately by the Verifier node.
 
-22. Each plan should contain only diagnostic steps that are still required.
+21. Each plan should contain only diagnostic steps that are still required.
 """
-
-
 
 
 ################################################
@@ -258,12 +267,7 @@ def validate_read_only_plan(
     plan: ExecutionPlan,
 ) -> ExecutionPlan:
     """
-    Проверяет, что каждый шаг плана исполним executor в read-only режиме:
-    - action_type="read"
-    - tool_name из READ_ONLY_AVAILABLE_ACTIONS.
-
-    Шаги-"размышления" (decide/analyze/verify) без tool_name отклоняются,
-    чтобы LLM исправила план на повторной попытке, а не executor упал в рантайме.
+    Validate that every proposed action is allowed in read-only mode.
     """
 
     allowed_tools = {
@@ -274,18 +278,24 @@ def validate_read_only_plan(
     errors: list[str] = []
 
     for step in plan.steps:
+
+        action = step.action
+
         if step.action_type != "read":
             errors.append(
                 f"Step {step.id!r}: action_type must be 'read', "
                 f"got {step.action_type!r}"
             )
-        if not step.tool_name:
+
+        if action.risk_level != "read":
             errors.append(
-                f"Step {step.id!r}: tool_name is required."
+                f"Step {step.id!r}: risk_level must be 'read', "
+                f"got {action.risk_level!r}"
             )
-        elif step.tool_name not in allowed_tools:
+
+        if action.tool not in allowed_tools:
             errors.append(
-                f"Step {step.id!r}: unknown tool_name {step.tool_name!r}. "
+                f"Step {step.id!r}: unknown tool {action.tool!r}. "
                 f"Allowed: {sorted(allowed_tools)}"
             )
 
@@ -359,10 +369,10 @@ async def create_execution_plan(
                             "The previous ExecutionPlan failed validation.\n\n"
                             f"{exc}\n\n"
                             "Return a corrected ExecutionPlan. "
-                            "Every depends_on value must exactly match "
-                            "an earlier step ID. "
-                            "Every step must have action_type=\"read\" and "
-                            "an exact tool_name from available_actions."
+                            "Every depends_on value must exactly match an earlier step ID. "
+                            "Every step must have action_type='read' and an action object "
+                            "with an allowed tool, valid arguments, non-empty expected_result "
+                            "and risk_level='read'."
                     )
                 )
             )
