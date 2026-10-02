@@ -90,13 +90,13 @@ def observer_node(
 
     # Читаем нормализованные факты прошлых шагов из state и добавляем новый нормализованный факт предыдущего step на Executor.
     observations = [
-        *(state.get("observations")),
-        observation.model_dump(mode="json")
+        *(state.get("observations") or []),
+        observation.model_dump(mode="json"),
     ]
 
     # Читаем выполенные step IDs и добавляем еще один предыдущий step ID выполненный на Executor. 
     completed_step_ids = [
-        *state.get("completed_step_ids", []),
+        *(state.get("completed_step_ids") or []),
         step["id"],
     ]
 
