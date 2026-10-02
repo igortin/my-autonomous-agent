@@ -128,33 +128,30 @@ def route_after_verification(
         5. Replan.
     """
 
+    # Ошибки имеют наивысший приоритет.
     # проверка наличия ошибок на какой-либо предыдущей ноде
     if has_unrecoverable_error(state):
         return "unrecoverable_error"
 
-    # проверка наличия ошибок на предыдущей execution_node
-    if state.get("execution_error"):
-        return "unrecoverable_error"
-
-    # проверяем нужно ли пользоатвельское согласие
+    # проверяем нужно ли пользовательское согласие
     if state.get("human_escalation_required", False):
         return "human_escalation_required"
 
-    # читаем Оценку достаточности шагов по схеме GoalVerification
+    # решение advance_iteration_node действительно управляет маршрутом
+    termination_reason = state.get("termination_reason")
+
+    if termination_reason in {
+            "max_iterations_reached",
+            "unrecoverable_error",
+    }:
+        return termination_reason
+
+
+    # Проверяем результат завершённой итерации.
     verification = state.get("verification")
 
     # определяем маршрут
     if verification and verification.get("goal_reached"):
         return "goal_reached"
-
-    # читаем значение текущей итерации lifecycle 
-    iteration_count = state.get("iteration_count",0)
-
-    # читаем значение разрешенное количество итераций lifecycle 
-    max_iterations = state.get("max_iterations", 1)
-
-    # определяем маршрут
-    if iteration_count >= max_iterations:
-        return "max_iterations_reached"
 
     return "replan"
