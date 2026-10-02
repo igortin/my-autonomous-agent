@@ -326,8 +326,8 @@ async def create_execution_plan(
         ),
     ]
 
-    #  читаем из PlannerInput.goal значение max_iterations 
-    MAX_PLANNER_ATTEMPTS = planner_input.goal.max_iterations
+    # Всего попыток создать план
+    MAX_PLANNER_ATTEMPTS = 3
 
     # контейнер для ошибки 
     last_error: Exception | None = None
