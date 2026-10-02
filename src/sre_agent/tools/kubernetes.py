@@ -15,7 +15,10 @@ from kubernetes import client, config as kube_config
 @dataclass(frozen=True)
 class KubernetesClusterConfig:
     """
-    Internal configuration for one Kubernetes cluster.
+    Конфигурация явно выбранного Kubernetes-кластера.
+
+    @dataclass(frozen=True):
+        поля которого нельзя изменять после создания объекта.
 
     alias:
         Logical cluster name visible to the LLM.
@@ -29,6 +32,9 @@ class KubernetesClusterConfig:
 
     default_namespace:
         Default namespace for this cluster.
+
+    Метод built-in __post_init__ запускается после конструктора __init__ когда поля объекта уже заполнены
+    и выполняет проверки значений или вычисления дополнительных полей.
     """
 
     alias: str
@@ -36,6 +42,16 @@ class KubernetesClusterConfig:
     kubeconfig_file: Optional[str] = None
     default_namespace: str = "default"
     description: str = ""
+
+    # Отсутствующий, пустой или некорректный context вызывает ошибку до создания Kubernetes-клиента.
+    def __post_init__(self):
+        if (not isinstance(self.context, str) or not self.context.strip()):
+            raise ValueError(
+                f"Cluster {self.alias!r}: "
+                "'context' must be an explicit non-empty string "
+                "in clusters.yaml"                
+            )
+
 
 ###########################################################
 ## Pydentic класс KubernetesToolInput и его schema
