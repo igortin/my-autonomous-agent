@@ -78,8 +78,15 @@ class KubernetesToolInput(BaseModel):
         ),
     )
 
-    namespace: Optional[str] = Field(default="default", description="namespace in Kubernetes cluster")
-
+    namespace: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
+    )
     pod_name: Optional[str] = Field(default=None, description="pod_name in Kubernetes cluster")
 
     node_name: Optional[str] = Field(default=None, description="node_name in Kubernetes cluster")
@@ -226,24 +233,46 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
     result_metadata = {}
 
     try:
-
-        # KubernetesClusterConfig, Kubernetes API client, client
+        # Инициалзируем KubernetesClusterConfig, Kubernetes API client, client
         cluster_config, api_client, v1 = create_kubernetes_core_v1_api(
             cluster_name=args.cluster_name
         )
 
-        # Создаем метаданные для использание при return
+        # Создаем метаданные для нормализации вывода
         result_metadata = {
             "cluster_name": cluster_config.alias,
             "cluster_context": cluster_config.context
         }
 
-        # kube_config.load_kube_config(context="minikube-dev")
+        # Определяем namespace
+        namespace = (
+            args.namespace
+            if args.namespace is not None
+            else cluster_config.default_namespace
+        )
 
-        # v1 = client.CoreV1Api()
+        # Реестр инстурментов для которых требуется namespace
+        namespaced_actions = {
+            "list_pods",
+            "get_pod",
+            "get_pod_logs",
+            "get_pod_events",
+        }
 
+        # Проверяем namespace указан
+        if args.action in namespaced_actions:
+            if not isinstance(namespace, str) or not namespace.strip():
+                raise ValueError(
+                    f"Cluster {cluster_config.alias!r}: "
+                    "namespace must be a non-empty string"
+                )
+            # добавляем namespace в метаданные
+            result_metadata["namespace"] = namespace
+
+
+        # Выполняем запрос
         if args.action == "list_pods":
-            pods = v1.list_namespaced_pod(namespace=args.namespace)
+            pods = v1.list_namespaced_pod(namespace=namespace)
 
             # Возращаем обычный Python dict
             return {
@@ -251,7 +280,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
                 **result_metadata,
                 "action": args.action,
                 "cluster_name": args.cluster_name,
-                "namespace": args.namespace,
+                "namespace": namespace,
                 "pods": [
                     {
                         "name": pod.metadata.name,
@@ -271,7 +300,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
         if args.action == "get_pod":
             pod = v1.read_namespaced_pod(
                 name=args.pod_name,
-                namespace=args.namespace,
+                namespace=namespace,
             )
 
             return {
@@ -284,7 +313,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
         if args.action == "get_pod_logs":
             logs = v1.read_namespaced_pod_log(
                 name=args.pod_name,
-                namespace=args.namespace,
+                namespace=namespace,
                 container=args.container_name,
                 tail_lines=args.tail_lines,
                 timestamps=True,
@@ -294,7 +323,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
                 "ok": True,
                 **result_metadata,
                 "action": args.action,
-                "namespace": args.namespace,
+                "namespace": namespace,
                 "pod_name": args.pod_name,
                 "container_name": args.container_name,
                 "logs": logs,
@@ -302,7 +331,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
 
         if args.action == "get_pod_events":
             events = v1.list_namespaced_event(
-                namespace=args.namespace,
+                namespace=namespace,
                 field_selector=f"involvedObject.name={args.pod_name}",
             )
 
@@ -310,7 +339,7 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
                 "ok": True,
                 **result_metadata,
                 "action": args.action,
-                "namespace": args.namespace,
+                "namespace": namespace,
                 "pod_name": args.pod_name,
                 "events": [
                     {
@@ -420,9 +449,14 @@ class ListPodsToolInput(BaseModel):
         )
     )
     
-    namespace: str = Field(
-        default="default",
-        description="Kubernetes namespace to list pods from."
+    namespace: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
     )
 
 
@@ -434,9 +468,14 @@ class GetPodToolInput(BaseModel):
         )
     )
     
-    namespace: str = Field(
-        default="default",
-        description="Kubernetes namespace where pod is located."
+    namespace: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
     )
 
     pod_name: str = Field(
@@ -453,9 +492,14 @@ class GetPodLogsToolInput(BaseModel):
         )
     )
 
-    namespace: str = Field(
-        default="default",
-        description="Kubernetes namespace where pod is located."
+    namespace: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
     )
 
     pod_name: str = Field(
@@ -484,9 +528,14 @@ class GetPodEventsToolInput(BaseModel):
         )
     )
 
-    namespace: str = Field(
-        default="default",
-        description="Kubernetes namespace where pod is located."
+    namespace: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
     )
 
     pod_name: str = Field(
@@ -545,8 +594,8 @@ class GetNodeEventsToolInput(BaseModel):
 )
 def list_pods_tool(
     cluster_name: str = None,
-    namespace: str = "default"
-    ) -> dict:
+    namespace: Optional[str] = None,  
+) -> dict:
     """
     List Kubernetes pods in a namespace.
     Use this tool when the user asks to show, list or inspects pods.
@@ -567,8 +616,8 @@ def list_pods_tool(
 def get_pod_tool(
     cluster_name: str = None,
     pod_name: str = None, 
-    namespace: str = "default"
-    ) -> dict:
+    namespace: Optional[str] = None,
+) -> dict:
     """
     Get detailed insformation about a specific Kubernetes pod in a namespace.
     Use this tool when the user asks about one exact pod.
@@ -590,10 +639,10 @@ def get_pod_tool(
 def get_pod_logs_tool(
     cluster_name: str = None,
     pod_name: str = None, 
-    namespace: str = "default", 
+    namespace: Optional[str] = None,
     container_name: Optional[str] = None, 
     tail_lines: int = 10,
-    ) -> dict:
+) -> dict:
     """
     Get logs from specific Kubernetes pod.
     Use this tool when the user asks for pod logs, appliaction logs or recent logs lines.
@@ -616,8 +665,8 @@ def get_pod_logs_tool(
 def get_pod_events_tool(
     cluster_name: str = None,
     pod_name: str = None, 
-    namespace: str = "default"
-    ) -> dict:
+    namespace: Optional[str] = None,
+) -> dict:
     """
     Get Kubernetes events related to a specific pod.
     Use this tool when the user asks why a pod failed, restarted, is pending, or has scheduling issues.
