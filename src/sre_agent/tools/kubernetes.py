@@ -173,10 +173,16 @@ def create_kubernetes_core_v1_api(cluster_name: str) -> tuple[
         configuration=configuration,
     )
 
-    # Возращает высокоуровневый типизированный Kubernetes клиента с методами
-    core_v1_api = client.CoreV1Api(
-        api_client=api_client
-    )
+    try:
+        # Возращает высокоуровневый типизированный Kubernetes клиент
+        core_v1_api = client.CoreV1Api(
+            api_client=api_client,
+        )
+    except BaseException:
+        # Клиент ещё не передан вызывающей функции.
+        # Освобождаем ресурс и повторно выбрасываем исключение.
+        api_client.close()
+        raise
     
     return (
         cluster_config,
@@ -215,12 +221,16 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
     - Return JSON-serializable dict.
     - Do not know anything about LangChain, LangGraph, messages, or tool calls.
     """
-
+    # Инициализируем переменные 
+    api_client = None
+    result_metadata = {}
 
     try:
 
-        # Получаем tuple кортеж из KubernetesClusterConfig, Kubernetes API client, client
-        (cluster_config, api_client, v1) = create_kubernetes_core_v1_api(cluster_name=args.cluster_name)
+        # KubernetesClusterConfig, Kubernetes API client, client
+        cluster_config, api_client, v1 = create_kubernetes_core_v1_api(
+            cluster_name=args.cluster_name
+        )
 
         # Создаем метаданные для использание при return
         result_metadata = {
@@ -388,12 +398,14 @@ def _execute_kubernetes_api(args: KubernetesToolInput) -> dict:
             "reason": e.reason,
             "body": e.body,
         }
-
     except Exception as e:
         return {
             "ok": False,
             "error": str(e),
         }
+    finally:
+        if api_client is not None:
+            api_client.close()
 
 
 ###########################################################
