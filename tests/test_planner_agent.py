@@ -27,7 +27,7 @@ def expected_plan() -> ExecutionPlan:
                     "action_type": "read",
                     "tool_name": "list_pods_tool",
                     "tool_args": {
-                        "cluster_name": "k8s-test-1",
+                        "cluster_alias": "k8s-test-1",
                         "namespace": "payments",
                     },
                     "depends_on": [],
@@ -39,7 +39,7 @@ def expected_plan() -> ExecutionPlan:
                     "action_type": "read",
                     "tool_name": "get_pod_events_tool",
                     "tool_args": {
-                        "cluster_name": "k8s-test-1",
+                        "cluster_alias": "k8s-test-1",
                         "namespace": "payments",
                         "pod_name": "payment-api-0",
                     },

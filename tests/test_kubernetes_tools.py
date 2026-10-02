@@ -21,7 +21,7 @@ def test_get_pod_requires_pod_name():
     with pytest.raises(ValueError):
         KubernetesToolInput(
             action="get_pod",
-            cluster_name="test-cluster",
+            cluster_alias="test-cluster",
             namespace="default",
         )
 
@@ -30,7 +30,7 @@ def test_get_node_requires_node_name():
     with pytest.raises(ValueError):
         KubernetesToolInput(
             action="get_node",
-            cluster_name="test-cluster",
+            cluster_alias="test-cluster",
         )
 
 
@@ -93,7 +93,7 @@ def test_list_pods_without_real_cluster(monkeypatch):
     )
 
     """"
-    Здесь подменяем функцию create_kubernetes_core_v1_api на 'lambda cluster_name: ...' для работы с MagicMock
+    Здесь подменяем функцию create_kubernetes_core_v1_api на 'lambda cluster_alias: ...' для работы с MagicMock
     
     в тестируемой функции _execute_kubernetes_api
 
@@ -114,13 +114,13 @@ def test_list_pods_without_real_cluster(monkeypatch):
     monkeypatch.setattr(
         kubernetes_tools,
         "create_kubernetes_core_v1_api",
-        lambda cluster_name: (cluster_config, fake_api_client, fake_v1)
+        lambda cluster_alias: (cluster_config, fake_api_client, fake_v1)
     )
 
     # Создаем Обьект KubernetesToolInput
     args = KubernetesToolInput(
         action="list_pods",
-        cluster_name="bcloud-test",
+        cluster_alias="bcloud-test",
         namespace="colvir-instance",
     )
 
@@ -129,7 +129,7 @@ def test_list_pods_without_real_cluster(monkeypatch):
 
     assert result["ok"] is True
     assert result["action"] == "list_pods"
-    assert result["cluster_name"] == "bcloud-test"
+    assert result["cluster_alias"] == "bcloud-test"
     assert result["namespace"] == "colvir-instance"
 
     assert len(result["pods"]) == 1
@@ -172,17 +172,17 @@ def test_get_pod_logs_without_real_cluster(monkeypatch):
         default_namespace="colvir-instance",
     )
 
-    # Здесь подменяем функцию create_kubernetes_core_v1_api на 'lambda cluster_name: ...' для работы с MagicMock
+    # Здесь подменяем функцию create_kubernetes_core_v1_api на 'lambda cluster_alias: ...' для работы с MagicMock
     monkeypatch.setattr(
         kubernetes_tools,
         "create_kubernetes_core_v1_api",
-        lambda cluster_name: (cluster_config, fake_api_client, fake_v1)
+        lambda cluster_alias: (cluster_config, fake_api_client, fake_v1)
     )
 
    # Создаем Обьект KubernetesToolInput
     args = KubernetesToolInput(
         action="get_pod_logs",
-        cluster_name="bcloud-test",
+        cluster_alias="bcloud-test",
         namespace="colvir-instance",
         pod_name="payment-api",
         container_name="app",
@@ -245,11 +245,11 @@ def test_get_pod_without_real_cluster(monkeypatch):
         default_namespace="colvir-instance",
     )
 
-    # подмена настоящей функции create_kubernetes_core_v1_api на lambda cluster_name
+    # подмена настоящей функции create_kubernetes_core_v1_api на lambda cluster_alias
     monkeypatch.setattr(
         kubernetes_tools,
         "create_kubernetes_core_v1_api",
-        lambda cluster_name: (
+        lambda cluster_alias: (
             cluster_config,
             fake_api_client,
             fake_v1,
@@ -259,7 +259,7 @@ def test_get_pod_without_real_cluster(monkeypatch):
     # Создаем вход для твоего Kubernetes tool. Определеям Обьект KubernetesToolInput
     args = KubernetesToolInput(
         action="get_pod",
-        cluster_name="bcloud-test",
+        cluster_alias="bcloud-test",
         namespace="colvir-instance",
         pod_name="payment-api",
     )
@@ -320,11 +320,11 @@ def test_list_nodes_without_real_cluster(monkeypatch):
         context="fake-context",
     )
 
-    # подмена настоящей функции create_kubernetes_core_v1_api на lambda cluster_name
+    # подмена настоящей функции create_kubernetes_core_v1_api на lambda cluster_alias
     monkeypatch.setattr(
         kubernetes_tools,
         "create_kubernetes_core_v1_api",
-        lambda cluster_name: (
+        lambda cluster_alias: (
             cluster_config,
             fake_api_client,
             fake_v1,
@@ -334,7 +334,7 @@ def test_list_nodes_without_real_cluster(monkeypatch):
     # Создаем вход для твоего Kubernetes tool. Определеям Обьект KubernetesToolInput
     args = KubernetesToolInput(
         action="list_nodes",
-        cluster_name="bcloud-test",
+        cluster_alias="bcloud-test",
     )
 
     # выполнение тестируемой функции и внктри вызывается list_node(), что возращает fake_node

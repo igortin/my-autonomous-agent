@@ -29,7 +29,7 @@ async def test_executor_runs_allowed_readonly_tool():
                     "action_type": "read",
                     "tool_name": "get_pod_tool",
                     "tool_args": {
-                        "cluster_name": "test-cluster",
+                        "cluster_alias": "test-cluster",
                         "namespace": "payments",
                         "pod_name": "payment-api-1",
                     },
@@ -74,7 +74,7 @@ async def test_executor_runs_allowed_readonly_tool():
     # Проверяем что вызвали ровно один раз и передали ему именно этот словарь в аргументе
     fake_tool.ainvoke.assert_awaited_once_with(
         {
-            "cluster_name": "test-cluster",
+            "cluster_alias": "test-cluster",
             "namespace": "payments",
             "pod_name": "payment-api-1",
         }

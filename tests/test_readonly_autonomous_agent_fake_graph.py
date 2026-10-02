@@ -34,7 +34,7 @@ from langchain_core.messages import HumanMessage
 # Декоратор @tool
 @tool
 def fake_get_pod_tool(
-    cluster_name: str,
+    cluster_alias: str,
     namespace: str,
     pod_name: str,
 ) -> dict:
@@ -45,7 +45,7 @@ def fake_get_pod_tool(
     return {
         "ok": True,
         "action": "get_pod",
-        "cluster_name": cluster_name,
+        "cluster_alias": cluster_alias,
         "namespace": namespace,
         "pod": {
             "name": pod_name,
@@ -74,7 +74,7 @@ def fake_get_pod_tool(
 
 @tool
 def fake_get_pod_logs_tool(
-    cluster_name: str,
+    cluster_alias: str,
     namespace: str,
     pod_name: str,
     tail_lines: int = 20,
@@ -86,7 +86,7 @@ def fake_get_pod_logs_tool(
     return {
         "ok": True,
         "action": "get_pod_logs",
-        "cluster_name": cluster_name,
+        "cluster_alias": cluster_alias,
         "namespace": namespace,
         "pod_name": pod_name,
         "logs": (
@@ -98,7 +98,7 @@ def fake_get_pod_logs_tool(
 
 @tool
 def fake_get_pod_events_tool(
-    cluster_name: str,
+    cluster_alias: str,
     namespace: str,
     pod_name: str,
 ) -> dict:
@@ -109,7 +109,7 @@ def fake_get_pod_events_tool(
     return {
         "ok": True,
         "action": "get_pod_events",
-        "cluster_name": cluster_name,
+        "cluster_alias": cluster_alias,
         "namespace": namespace,
         "pod_name": pod_name,
         "events": [
@@ -179,7 +179,7 @@ async def fake_planner_node(
                     "action_type": "read",
                     "tool_name": "get_pod_tool",
                     "tool_args": {
-                        "cluster_name": "test-cluster",
+                        "cluster_alias": "test-cluster",
                         "namespace": "payments",
                         "pod_name": "payment-api-1",
                     },
@@ -194,7 +194,7 @@ async def fake_planner_node(
                     "action_type": "read",
                     "tool_name": "get_pod_logs_tool",
                     "tool_args": {
-                        "cluster_name": "test-cluster",
+                        "cluster_alias": "test-cluster",
                         "namespace": "payments",
                         "pod_name": "payment-api-1",
                         "tail_lines": 20,
@@ -328,7 +328,7 @@ async def fake_replanner_node(
                     "action_type": "read",
                     "tool_name": "get_pod_events_tool",
                     "tool_args": {
-                        "cluster_name": "test-cluster",
+                        "cluster_alias": "test-cluster",
                         "namespace": "payments",
                         "pod_name": "payment-api-1",
                     },

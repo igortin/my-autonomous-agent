@@ -165,7 +165,7 @@ async def executor_node(
             }
 
 
-        # Проверяем аргументы шага по args_schema инструмента ДО вызова,
+        # Проверяем аргументы шага по args_schema (напрмер схема ListPodsToolInput) инструмента ДО вызова,
         # чтобы ошибка planner'а стала execution_error, а не исключением в графе
         try:
             tool.args_schema.model_validate(step.tool_args)
