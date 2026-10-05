@@ -25,10 +25,15 @@ def expected_plan() -> ExecutionPlan:
                     "description": "List pods of payment-api",
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "list_pods_tool",
-                    "tool_args": {
-                        "cluster_alias": "k8s-test-1",
-                        "namespace": "payments",
+                    "action": {
+                        "action_id": "list-payment-pods",
+                        "tool": "list_pods_tool",
+                        "arguments": {
+                            "cluster_alias": "k8s-test-1",
+                            "namespace": "payments",
+                        },
+                        "expected_result": "Obtain list of payment-api pods.",
+                        "risk_level": "read",
                     },
                     "depends_on": [],
                 },
@@ -37,11 +42,16 @@ def expected_plan() -> ExecutionPlan:
                     "description": "Inspect events of payment-api pod",
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "get_pod_events_tool",
-                    "tool_args": {
-                        "cluster_alias": "k8s-test-1",
-                        "namespace": "payments",
-                        "pod_name": "payment-api-0",
+                    "action": {
+                        "action_id": "read-payment-pod-events",
+                        "tool": "get_pod_events_tool",
+                        "arguments": {
+                            "cluster_alias": "k8s-test-1",
+                            "namespace": "payments",
+                            "pod_name": "payment-api-0",
+                        },
+                        "expected_result": "Obtain events of payment-api-0 pod.",
+                        "risk_level": "read",
                     },
                     "depends_on": [
                         "inspect_pods"
@@ -289,14 +299,15 @@ async def test_planner_stops_after_goal_interpreter_error():
     }
 
 ###############################################
-# Unit Test planner отклоняет шаг без tool_name
+# Unit Test planner отклоняет шаг без action
 # и повторяет запрос к LLM с текстом ошибки
 ###############################################
 @pytest.mark.asyncio
-async def test_planner_retries_when_step_has_no_tool_name(monkeypatch, expected_plan):
+async def test_planner_retries_when_step_has_no_action(monkeypatch, expected_plan):
 
-    # план с шагом-"размышлением" без tool_name, как в реальном прогоне
-    plan_with_decision_step = ExecutionPlan.model_validate(
+    # сырой ответ LLM с шагом-"размышлением" без action, как в реальном прогоне.
+    # Это dict, а не ExecutionPlan: такой план не проходит валидацию схемы.
+    plan_with_decision_step = (
         {
             "steps": [
                 *expected_plan.model_dump(mode="json")["steps"],
@@ -346,5 +357,5 @@ async def test_planner_retries_when_step_has_no_tool_name(monkeypatch, expected_
 
     # во второй вызов LLM получила сообщение с ошибкой по конкретному шагу
     retry_messages = fake_planner_model.ainvoke.await_args_list[1].args[0]
-    assert "decide_additional_inspection" in retry_messages[-1].content
-    assert "tool_name is required" in retry_messages[-1].content
+    assert "steps.2.action" in retry_messages[-1].content
+    assert "Field required" in retry_messages[-1].content

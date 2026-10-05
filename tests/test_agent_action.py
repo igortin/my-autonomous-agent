@@ -4,7 +4,9 @@ from pydantic import ValidationError
 
 from sre_agent.state import AgentAction
 
-
+#######################################
+#  Подготовка к тестированию
+#######################################
 @pytest.fixture
 def action_payload():
     return {
@@ -20,7 +22,9 @@ def action_payload():
     }
 
 
-
+#######################################
+# Unit-test - Тестирование сериализации и восстановления 
+#######################################
 def test_action_can_be_serialized(action_payload):
     """
     Тестирование сериализации и восстановления 
@@ -32,10 +36,13 @@ def test_action_can_be_serialized(action_payload):
     restored = AgentAction.model_validate_json(
         action.model_dump_json()
     )
-
     assert  action == restored
 
 
+
+#######################################
+# Unit-test - Тестирование не поддерживаемого значения risk_level
+#######################################
 @pytest.mark.parametrize(
     "risk_level",
     ["critical", "write", "", None],
@@ -51,6 +58,9 @@ def test_action_rejects_unknown_risk(action_payload, risk_level):
         AgentAction.model_validate(action_payload)
 
 
+#######################################
+# Unit-test - Тестирование не поддерживаемого значения expected_result
+#######################################
 @pytest.mark.parametrize(
     "expected_result",
     ["", "  ", None],

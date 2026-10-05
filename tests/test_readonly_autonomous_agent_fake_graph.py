@@ -177,11 +177,16 @@ async def fake_planner_node(
                     ),
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "get_pod_tool",
-                    "tool_args": {
-                        "cluster_alias": "test-cluster",
-                        "namespace": "payments",
-                        "pod_name": "payment-api-1",
+                    "action": {
+                        "action_id": "read-pod-status",
+                        "tool": "get_pod_tool",
+                        "arguments": {
+                            "cluster_alias": "test-cluster",
+                            "namespace": "payments",
+                            "pod_name": "payment-api-1",
+                        },
+                        "expected_result": "Obtain current pod status.",
+                        "risk_level": "read",
                     },
                     "depends_on": [],
                 },
@@ -192,12 +197,17 @@ async def fake_planner_node(
                     ),
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "get_pod_logs_tool",
-                    "tool_args": {
-                        "cluster_alias": "test-cluster",
-                        "namespace": "payments",
-                        "pod_name": "payment-api-1",
-                        "tail_lines": 20,
+                    "action": {
+                        "action_id": "read-pod-logs",
+                        "tool": "get_pod_logs_tool",
+                        "arguments": {
+                            "cluster_alias": "test-cluster",
+                            "namespace": "payments",
+                            "pod_name": "payment-api-1",
+                            "tail_lines": 20,
+                        },
+                        "expected_result": "Obtain recent container logs.",
+                        "risk_level": "read",
                     },
                     "depends_on": [
                         "inspect-pod",
@@ -326,11 +336,16 @@ async def fake_replanner_node(
                     ),
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "get_pod_events_tool",
-                    "tool_args": {
-                        "cluster_alias": "test-cluster",
-                        "namespace": "payments",
-                        "pod_name": "payment-api-1",
+                    "action": {
+                        "action_id": "read-pod-events",
+                        "tool": "get_pod_events_tool",
+                        "arguments": {
+                            "cluster_alias": "test-cluster",
+                            "namespace": "payments",
+                            "pod_name": "payment-api-1",
+                        },
+                        "expected_result": "Obtain Kubernetes events for the pod.",
+                        "risk_level": "read",
                     },
                     "depends_on": [],
                 }

@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from sre_agent.autonomy.executor import executor_node
+from sre_agent.tools.kubernetes import get_pod_tool
 
 from sre_agent.autonomy.observer import observer_node
 
@@ -27,11 +28,16 @@ async def test_executor_runs_allowed_readonly_tool():
                     "description": "Inspect pod",
                     "agent": "kubernetes",
                     "action_type": "read",
-                    "tool_name": "get_pod_tool",
-                    "tool_args": {
-                        "cluster_alias": "test-cluster",
-                        "namespace": "payments",
-                        "pod_name": "payment-api-1",
+                    "action": {
+                        "action_id": "read-pod-status",
+                        "tool": "get_pod_tool",
+                        "arguments": {
+                            "cluster_alias": "test-cluster",
+                            "namespace": "payments",
+                            "pod_name": "payment-api-1",
+                        },
+                        "expected_result": "Obtain current pod status.",
+                        "risk_level": "read",
                     },
                     "depends_on": [],
                 }
@@ -56,6 +62,9 @@ async def test_executor_runs_allowed_readonly_tool():
 
     # Настраиваем вызов Tool Mock вернет fake_result
     fake_tool.ainvoke.return_value = fake_result
+
+    # Подставляем настоящую схему аргументов, чтобы executor реально валидировал action.arguments
+    fake_tool.args_schema = get_pod_tool.args_schema
 
     # код временно подменяет реестр READ_ONLY_TOOL_REGISTRY, запускает executor_node и после выхода из блока восстанавливает реестр.
     with patch.dict(
@@ -95,8 +104,13 @@ async def test_executor_rejects_write_action():
                     "description": "Restart pod",
                     "agent": "kubernetes",
                     "action_type": "write",                         # <---- не поддерживаемый action type на execution_node 
-                    "tool_name": "restart_pod_tool",
-                    "tool_args": {},
+                    "action": {
+                        "action_id": "restart-pod",
+                        "tool": "restart_pod_tool",
+                        "arguments": {},
+                        "expected_result": "Pod is restarted.",
+                        "risk_level": "high",
+                    },
                     "depends_on": [],
                 }
             ]
@@ -126,8 +140,13 @@ async def test_executor_reject_unknow_tool():
                     "description": "Restart pod",
                     "agent": "kubernetes",
                     "action_type": "read",                         # <---- не поддерживаемый action type на execution_node 
-                    "tool_name": "unknow_tool",
-                    "tool_args": {},
+                    "action": {
+                        "action_id": "unknown-action",
+                        "tool": "unknow_tool",
+                        "arguments": {},
+                        "expected_result": "Unknown result.",
+                        "risk_level": "read",
+                    },
                     "depends_on": [],
                 }
             ]
@@ -157,8 +176,13 @@ def test_observer_stores_normalized_observation():
                 "description": "Inspect pod events",
                 "agent": "kubernetes",
                 "action_type": "read",
-                "tool_name": "get_pod_events_tool",
-                "tool_args": {},
+                "action": {
+                    "action_id": "read-pod-events",
+                    "tool": "get_pod_events_tool",
+                    "arguments": {},
+                    "expected_result": "Obtain pod events.",
+                    "risk_level": "read",
+                },
                 "depends_on": [],
             },
             "raw_result": {

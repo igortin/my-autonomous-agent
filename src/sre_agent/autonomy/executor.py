@@ -14,6 +14,12 @@ from sre_agent.tools.kubernetes import (
 
 import logging
 
+# basic configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 #####################################
@@ -169,7 +175,7 @@ async def executor_node(
                 "execution_error": {
                     "type": "tool_not_allowed",
                     "message": (
-                        f"Tool {step.tool_name!r} "
+                        f"Tool {action.tool!r} "
                         "is not allowed"
                     ),
                 },
@@ -194,7 +200,7 @@ async def executor_node(
                         f"Invalid arguments for {action.tool!r}: "
                         f"{exc.errors(include_url=False)}"
                     ),
-                    "tool_args": step.tool_args,
+                    "tool_args": action.arguments,
                 },
             }
 
@@ -211,6 +217,7 @@ async def executor_node(
             action.model_dump_json(),
         )
 
+        
         # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
         raw_result = await tool.ainvoke(action.arguments)
 
