@@ -49,12 +49,14 @@ class AgentGoal(BaseModel):
         ),
     )
 
+
 # -------------------------
-#  Схема AgentAction (намерение)
+#  Схема AgentAction (НАМЕРЕНИЕ)
 # -------------------------
 class AgentAction(BaseModel):
     """
     Официальное намерение задействовать один оперативный инструмент.
+    Здесь агент описывает, что собирается сделать.
     """
     model_config = ConfigDict(
         extra="forbid",                         # отклоняет неизвестные поля
@@ -84,6 +86,55 @@ class AgentAction(BaseModel):
     )
 
     risk_level: Literal["read", "low", "medium", "high"]
+
+# -------------------------
+#  Схема ActionObservation (РЕЗУЛЬТАТ НАМЕРЕНИЯ)
+# -------------------------
+class ActionObservation(BaseModel):
+    """
+    Фактический результат попытки выполнить AgentAction.
+    """
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    action_id: str = Field(
+        min_length=1
+    )
+
+    success: bool = Field(
+        strict=True                 # включает строгую проверку, без преобразования строк и чисел.
+    )
+
+    result: dict[str, Any] | None
+
+    error: str | None
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> "ActionObservation":
+        """
+        Проверка на противоречивость значений в атрибутах
+        """
+        if self.success:
+            if self.error is not None:
+                raise ValueError(
+                    "Successful observation must not contain an error"
+                )
+
+            if self.result is None:
+                raise ValueError(
+                    "Successful observation must contain a result"
+                ) 
+        else:
+           if not self.error:
+                raise ValueError(
+                    "Failed observation must contain an error"
+                )
+
+        return self
+ 
+
 
 # -------------------------
 #  Схема PlanStep
@@ -264,35 +315,6 @@ TerminationReason = Literal[
 
 
 # -------------------------
-#  Схема Результат шага
-# -------------------------
-
-class StepObservation(BaseModel):
-    """
-    Фактический результат выполненного шага
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    # идентификатор шага
-    step_id: str = Field(min_length=1)
-
-    # название инструмента
-    tool_name: str = Field(min_length=1)
-
-    # результат
-    ok: bool
-
-    # краткое описание результата выполненного шага
-    summary: str = Field(min_length=1)
-
-    # данные собранные на шаге
-    data: dict[str, Any] = Field(default_factory=dict)
-
-    # хранение ошибки выполнения шага
-    error: str | None = None
-
-
-# -------------------------
 #  Схема проверки Goal
 # -------------------------
 
@@ -369,10 +391,10 @@ class SREAgentState(MessagesState, total=False):
     # уже завершённые шаги
     completed_step_ids: list[str]
 
-    # сырой результат Executor до обработки Observer
+    # Результат Executor шага и сериализованный ActionObservation.
     pending_step_result: dict[str, Any] | None
 
-    # список нормализованные факты прошлых шагов по схеме StepObservation
+    # Нормализованные результаты список по схеме ActionObservation.
     observations: list[dict[str, Any]]
 
     # последнее решение Verifier по схеме GoalVerification

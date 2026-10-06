@@ -14,6 +14,8 @@ from sre_agent.state import AgentGoal, SREAgentState
 from sre_agent.autonomy.lifecycle import has_unrecoverable_error
 from typing import Literal
 
+from sre_agent.state import ActionObservation
+
 VERIFIER_SYSTEM_PROMPT = """
 You are the Verifier of a read-only autonomous SRE agent.
 
@@ -22,7 +24,7 @@ AgentGoal has been reached.
 
 Use only:
 - AgentGoal;
-- completed StepObservations.
+- completed ActionObservations.
 
 Rules:
 1. Return only GoalVerification.
@@ -33,11 +35,20 @@ Rules:
 6. Put all missing information into missing_criteria.
 7. Tool execution success does not automatically mean goal success.
 8. goal_reached=true only when every success criterion is supported.
-9. If a criterion requires data that the read-only tools cannot provide
-   (for example more than 20 log lines, logs of a previous container run,
-   or saving artifacts), treat the closest achievable evidence as
-   sufficient for that criterion and explain this in the reasoning.
-   Do not request replanning for capabilities the agent does not have.
+9. If available tools cannot provide evidence required by a success
+   criterion, leave that criterion in missing_criteria and explain
+   the capability limitation. Do not mark it satisfied using
+   weaker substitute evidence.
+
+Each ActionObservation contains:
+- action_id: the executed action identifier;
+- success: whether the action completed successfully;
+- result: observed data or error details;
+- error: execution failure description.
+
+Use result as evidence of environment state only when success=true.
+For failed observations, use result and error as diagnostic information.
+Never treat expected_result as an observed fact.
 """
 
 # Инициализация LLM с структуированным выводом по схеме 
@@ -61,11 +72,11 @@ async def verifier_node(
         goal = AgentGoal.model_validate(raw_goal)
 
 
-        # Читаем список нормалиованных результатов выполненных прошлых шагов   
-        observations = state.get(
-            "observations",
-            [],
-        )
+        # Cписок нормалиованных JSON результатов выполненных прошлых шагов
+        observations = [
+            ActionObservation.model_validate(item).model_dump(mode="json")
+            for item in (state.get("observations") or [])
+        ]
 
         # Вызов LLM и выполнеям проверку достижения goal.succes_criteries на основе результатов выполненных шагов
         verification = await verifier_model.ainvoke(

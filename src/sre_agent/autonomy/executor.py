@@ -14,6 +14,12 @@ from sre_agent.tools.kubernetes import (
 
 import logging
 
+from sre_agent.state import ActionObservation
+
+from sre_agent.autonomy.observation import (
+    normalize_action_result,
+)
+
 # basic configuration
 logging.basicConfig(
     level=logging.INFO,
@@ -217,19 +223,42 @@ async def executor_node(
             action.model_dump_json(),
         )
 
+        try:     
+            # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
+            raw_result = await tool.ainvoke(action.arguments)
         
-        # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
-        raw_result = await tool.ainvoke(action.arguments)
+        except Exception as exc:
+            observation = ActionObservation(
+                action_id=action.action_id,
+                success=False,
+                result=None,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
-        # нормализация сырого результата raw_result, приводим результат к общей структуре/схеме.
+        else:
+            # Нормализуем результат и создаем объект observation класса ActionObservation
+            observation = normalize_action_result(
+                action_id=action.action_id,
+                raw_result=raw_result,
+            )
+
+        logger.info(
+            "agent_action_after_execution step_id=%s observation=%s",
+            step.id,
+            observation.model_dump_json(),
+        )
+
+        # в pending_step_result попадает как результата выполнения инструмента 
+        # уже сериализованный контракт observation класса ActionObservation
         return {
             "current_step": step.id,
             "pending_step_result": {
                 "step": step.model_dump(mode="json"),
-                "raw_result": raw_result,
+                "observation": observation.model_dump(mode="json"),
             },
             "execution_error": None,
         }
+
 
     except Exception as exc:
         return {

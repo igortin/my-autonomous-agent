@@ -1,39 +1,26 @@
-##################################
-#  Детерминированным Observer
-##################################
-
-from sre_agent.state import SREAgentState, StepObservation
-
 from typing import Literal
 
 from sre_agent.autonomy.executor import select_next_executable_step
 
+from sre_agent.state import (
+    ActionObservation,
+    PlanStep,
+    SREAgentState,
+)
+
 #####################################
 # Observer node
 #####################################
-
 def observer_node(
         state: SREAgentState
 ) -> dict:
-
     """"
-    Нормализовать результат Executor.
-
-    Наблюдатель приводит в актуальное state после вызова Tool на Executor.
-    
-    Приводит атрибуты state в актуальное и корректное состояние, 
-    поскольку вызывали Tool и получили результаты на предыдущем шаге в Executor.
-
-    Отвественость:
-    - Интерпретировать результаты выполения Tool
-    - Актуализировать state
+    Проверить и сохранить результат выполненного действия инструмента в state.
     """
-
-    # Провереям наличие ошибок на Executor и ее заменяем её вторичной ошибкой Observer.
+    # Провереям наличие ошибок на Executor.
     if state.get("execution_error"):
         return {}
 
- 
     # Читаем данные записанные в state.pending_step_result как результата предыдущего step на Executor.
     pending = state.get("pending_step_result")
 
@@ -46,75 +33,55 @@ def observer_node(
             }
         }
 
-    # Читаем step в формате JSON строки выполннего на Executor
-    step = pending["step"]
+    try:
+        # Валидируем и создаем объект класса PlanStep
+        step = PlanStep.model_validate(pending["step"])
 
-    action = step["action"]
-    tool_name = action["tool"]
+        # Валидируем и создаем объект класса ActionObservation
+        observation = ActionObservation.model_validate(pending["observation"])
 
-
-    # Читаем фактический результат выполенения step на Executor  
-    raw_result = pending["raw_result"]
-
-    # Читаем return code выполнения Tool  
-    ok = bool(raw_result.get("ok", False))
-
-
-    # Создаем переменные для объекта класса StepObservation
-    if ok:
-        summary = (
-            f"Tool {tool_name} completed "
-            f"for step {step['id']}"
-        )
-
-        error = None
-    else:
-        summary = (
-            f"Tool {tool_name} failed "
-            f"for step {step['id']}"
-        )
-
-        error = str(
-            raw_result.get(
-                "error",
-                "Unknown tool error",
+        # Проверка соответствия предыдущего собранного результата на шаге и самого шага 
+        if observation.action_id != step.action.action_id:
+            raise ValueError(
+                "Observation action_id does not match the executed action"
             )
-        )
 
-    # Создаем новый объект фактического результата выполненного step на execution_node
-    observation = StepObservation(
-        step_id=step["id"],
-        tool_name=tool_name,
-        ok=ok,
-        summary=summary,
-        data=raw_result,
-        error=error,
-    )
+        # Чтение всех собранных результатов выполненных шагов из состояния 
+        # и добавление предудыщего шага результатов в контейнер  
+        observations = [
+            *(state.get("observations") or []),
+            observation.model_dump(mode="json"),
+        ]
 
+        # Чтение всех завершенных step ID и создание контейнера
+        completed_step_ids = [
+            *(state.get("completed_step_ids") or []),
+        ]
 
-    # Читаем нормализованные факты прошлых шагов из state и добавляем новый нормализованный факт предыдущего step на Executor.
-    observations = [
-        *(state.get("observations") or []),
-        observation.model_dump(mode="json"),
-    ]
+        # Добавление предыдущего выполеннего ID шага 
+        if step.id not in completed_step_ids:
+            completed_step_ids.append(step.id)
 
-    # Читаем выполенные step IDs и добавляем еще один предыдущий step ID выполненный на Executor. 
-    completed_step_ids = [
-        *(state.get("completed_step_ids") or []),
-        step["id"],
-    ]
+        # LangGraph перехватывает и записывает обнровленные контейнеры в состояние  
+        return {
+            # Обновляем список результатов шагов
+            "observations": observations,
+            # Обновляем список выполненных шагов
+            "completed_step_ids": completed_step_ids,
+            # Подготовливаем и очищаем контейнер для следующего вызова Tool
+            "pending_step_result": None,
+            # Подготовливаем и очищаем для следующего шага
+            "current_step": None,
+        }
 
-    # LangGraph перезаписывает занчения в state
-    return {
-        # Обновляем список результатов шагов
-        "observations": observations,
-        # Обновляем список выполненных шагов
-        "completed_step_ids": completed_step_ids,
-        # Подготовливаем и очищаем контейнер для следующего вызова Tool
-        "pending_step_result": None,
-        # Подготовливаем и очищаем для следующего шага
-        "current_step": None,
-    }
+    except (KeyError, TypeError, ValueError) as exc:
+        return {
+            "pending_step_result": None,
+            "execution_error": {
+                "type": "invalid_action_observation",
+                "message": str(exc),
+            },
+        }
 
 
 ##################################
@@ -128,15 +95,33 @@ def route_after_observer(
     "stop"
 ]:
     """
-    Функция прверяет execution_plan в state и выполняет передачу контроля на следующую ноду.
-    Так происходит выполнение нескольких step одного execution_plan в итерации lifecycle. 
+    Функция проверяет execution_plan и выполняет передачу контроля 
+    на следующий шаг в рамках одной итерации lifecycle. 
     """
     
-    # Проверка ошибок выполнения Tool на executor_node
-    # следущие зависимые step-ы не могут быть вызваны при ошибке на пердыдущем шаге.
+    # Проверка ошибок выполнения Tool на Executor
+    # следущие зависимые step-ы не могут быть вызваны при ошибке на предыдущем шаге.
     if state.get("execution_error"):
         return "stop"
 
+    # Читаем все результаты предыдущих шагов
+    observations = state.get("observations") or []
+    
+    if observations:
+        # Проверка результата ПОСЛЕДНЕГО шага на ошибки контракта
+        try:
+            latest_observation = ActionObservation.model_validate(observations[-1])
+        except (TypeError, ValueError):
+            return "stop"
+
+        """При неудачном последнем шаге"""
+        # Происходит переход к ноде Verifier и завершается текущая итерация. 
+        # Если цель не достигнута, Replanner сможет пересмотреть план на основе ошибки. 
+        if not latest_observation.success:
+            return "verify_goal"
+
+
+    """При успешном последнем шаге"""
     try:
         # Определение следующего step из атрибута state.execution_plan
          next_step = select_next_executable_step(state)
@@ -147,4 +132,4 @@ def route_after_observer(
     if next_step is not None:
         return "execute_next_step"
 
-    return "verify_goal"    
+    return "verify_goal"   

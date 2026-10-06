@@ -157,7 +157,7 @@ def goal_reached_node(
     # Читаем из state
     goal = state.get("goal") or {}                              # объект по схеме AgentGoal сериализоваанный в JSON
     verification = state.get("verification") or {}              # объект по схеме GoalVerification сериализоваанный в JSON
-    observations = state.get("observations") or []              # список объектов по схеме StepObservation сериализоваанных в JSON
+    observations = state.get("observations") or []              # список объектов по схеме ActionObservation сериализоваанных в JSON
     
     sections = ["Диагностическая цель достигнута."]             # контейнер для выводов в AIMessage
 
@@ -186,23 +186,31 @@ def goal_reached_node(
             + "\n".join(f"- {item}" for item in evidence)
         )
 
-    # Добавляем в контейнер результаты шагов
+    """Добавляем собранные результаты шагов в контейнер sections"""
     if observations:
+
+        # Создаем временный контейнер
         observation_lines = []
 
         for observation in observations:
+
+            # Создаем переменную на основе атрубиутов класса ActionObservation
             status = (
                 "Успешно"
-                if observation.get("ok")
+                if observation["success"]
                 else "Ошибка"
             )
-            tool_name = observation.get("tool_name", "unknown")
-            summary = observation.get("summary", "")
 
-            observation_lines.append(
-                f"- {tool_name}: {status}. {summary}"
-            )
+            action_id = observation["action_id"]
 
+            line = f"- {action_id}: {status}"
+
+            if observation.get("error"):
+                line += f". {observation['error']}"
+
+            observation_lines.append(line)
+
+        # Добавим все результаты шагов в контейнер sections
         sections.append(
             "Собранные наблюдения:\n"
             + "\n".join(observation_lines)
