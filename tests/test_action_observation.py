@@ -15,13 +15,11 @@ from sre_agent.state import ActionObservation
 
 
 ###############################################
-# Unit tests 1
+# Unit tests - Тестирование правильного преобразования результата.
 ###############################################
 def test_successful_tool_result_is_normalized():
-    """
-    Тестирование правильного преобразования результата.
-    
-    Нормализация и создание ActionObservation, 
+    """   
+    Тестирование нормализации и создание ActionObservation, 
     при получении dict как результат выполненного Tool.
     """
     # Создание и валидация результатов выполнения инструмента 
@@ -49,13 +47,11 @@ def test_successful_tool_result_is_normalized():
 
 
 ###############################################
-# Unit tests 2
+# Unit tests - Тестирование сохранения деталей ошибки.
 ###############################################
 def test_failed_tool_result_preserves_error_details():
-    """
-    Тестирование сохранения деталей ошибки.
-    
-    Создание ActionObservation,
+    """   
+    Тестирование создания ActionObservation,
     при получении dict как результат выполненного Tool,
     с сохранением деталей ошибки в result.
     """
@@ -83,13 +79,11 @@ def test_failed_tool_result_preserves_error_details():
 
 
 ###############################################
-# Unit tests 3
+# Unit tests - Тестирование удаления транспортной оболочки
 ###############################################
 def test_tool_message_is_correct():
     """
-    Тестирование удаления транспортной оболочки
-
-    Создание ActionObservation при получении ToolMessage 
+    Тестирование создания ActionObservation при получении ToolMessage 
     и уcпешном выполнении Tool.
     """
     # Определим ToolMessage
@@ -120,13 +114,11 @@ def test_tool_message_is_correct():
 
 
 ###############################################
-# Unit tests 4
+# Unit tests - Тестирование удаления транспортной оболочки ToolMessage
 ###############################################
 def test_tool_message_error_overrides_payload_success():
     """
-    Тестирование удаления транспортной оболочки
-
-    Cоздание ActionObservation при получении ToolMessage 
+    Тестирование создания ActionObservation при получении ToolMessage 
     и сбое выполнении Tool. 
     """
     # Определим ToolMessage
@@ -151,7 +143,7 @@ def test_tool_message_error_overrides_payload_success():
     assert observation.error is not None
 
 ###############################################
-# Unit tests 5
+# Unit tests - Тестирование удаления транспортной оболочки ToolMessage
 ###############################################
 @pytest.mark.parametrize(
     "raw_result",
@@ -166,8 +158,6 @@ def test_tool_message_error_overrides_payload_success():
 
 def test_invalid_result_does_not_become_success(raw_result):
     """
-    Тестирование отклонения некорректного статуса.
-
     Создание ActionObservation при получении не корректного результата выполнении Tool. 
     """
 
@@ -181,13 +171,13 @@ def test_invalid_result_does_not_become_success(raw_result):
 
 
 ###############################################
-# Unit tests 6
+# Unit test - Тестирование пригодность результата с datetime для JSON.
 ###############################################
 def test_datetime_becomes_json_serializable():
-    """
-    Тестирование пригодность результата для JSON.
-    
-    Cоздание ActionObservation при получении корректного результата выполнении Tool с datetime. 
+    """   
+    Тестирование создания ActionObservation при получении dict 
+    как корректного результата выполненного Tool 
+    с datetime. 
     """
     # Создание объекта класса ActionObservation 
     # c использованием сериализцаии datetime в строку IsoFormat
@@ -208,16 +198,13 @@ def test_datetime_becomes_json_serializable():
     json.dumps(observation.model_dump(mode="json"))
 
 
-
-
 ###############################################
-# Unit tests 7
+# Unit tests - Тестирование возникновения ошибки при противоречии в результате выпонения Tool.
 ###############################################
 def test_success_with_error_is_rejected():
     """
-    Тестирование запрета противоречивого observation.
-
-    Создание ActionObservation при ПРОТИВОРЕЧИИ в результате выполнении Tool.
+    Тестирование создания ActionObservation при получении dict 
+    c ПРОТИВОРЕЧИЯМИ в результате выполнении Tool.
     (success=True и error="не пустой")
     """
     with pytest.raises(ValidationError):
