@@ -111,9 +111,9 @@ def normalize_action_result(
                         error=payload.strip()  or "Tool execution failed",
                     )
 
-        """Если пришла JSON строка или просто строка"""
+        """Если пришла JSON строка, просто строка или dict"""
         if isinstance(payload, str):
-            # Десериализация строки в python объект dict
+            # Десериализация payload.content строки в python объект dict
             payload = json.loads(payload)
 
         # Проверка десериализованного объекта тип данных dict
