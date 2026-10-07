@@ -336,7 +336,7 @@ async def create_execution_plan(
         ),
     ]
 
-    # Всего попыток создать план
+    # Всего попыток создать execution_plan
     MAX_PLANNER_ATTEMPTS = 3
 
     # контейнер для ошибки 

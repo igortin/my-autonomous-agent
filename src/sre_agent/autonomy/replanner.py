@@ -98,7 +98,7 @@ async def replanner_node(
         # Валидируем цель и получаем объект класса AgentGoal
         goal = AgentGoal.model_validate(raw_goal)
 
-        # Cписок нормалиованных JSON результатов выполненных прошлых шагов        
+        # Валидация нормализованных JSON результатов выполненных прошлых шагов        
         observations = [
             ActionObservation.model_validate(item).model_dump(mode="json")
             for item in (state.get("observations") or [])

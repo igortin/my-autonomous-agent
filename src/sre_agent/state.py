@@ -51,7 +51,7 @@ class AgentGoal(BaseModel):
 
 
 # -------------------------
-#  Схема AgentAction (НАМЕРЕНИЕ)
+#  Схема AgentAction (проверяемое НАМЕРЕНИЕ)
 # -------------------------
 class AgentAction(BaseModel):
     """
@@ -88,7 +88,7 @@ class AgentAction(BaseModel):
     risk_level: Literal["read", "low", "medium", "high"]
 
 # -------------------------
-#  Схема ActionObservation (РЕЗУЛЬТАТ НАМЕРЕНИЯ)
+#  Схема ActionObservation (Проверяемый факт выполнения)
 # -------------------------
 class ActionObservation(BaseModel):
     """
@@ -102,7 +102,8 @@ class ActionObservation(BaseModel):
     action_id: str = Field(
         min_length=1
     )
-
+    
+    # описывает выполнение действия 
     success: bool = Field(
         strict=True                 # включает строгую проверку, без преобразования строк и чисел.
     )
@@ -376,7 +377,7 @@ class SREAgentState(MessagesState, total=False):
     # количество полностью завершённых lifecycle итераций.
     iteration_count: int
 
-    # предохранитель итераций (runtime-копия AgentGoal.max_iterations).
+    # предохранитель количества итераций lifecycle (runtime-копия AgentGoal.max_iterations).
     max_iterations: int
 
     # причина окончательного завершения lifecycle.
