@@ -316,24 +316,29 @@ TerminationReason = Literal[
 
 
 # -------------------------
-#  Схема проверки Goal
+#  Выходная схема Verifier
 # -------------------------
 
 class GoalVerification(BaseModel):
     """
-    Оценка достаточности собранных наблюдений для достижения цели после выполнения нескольких шагов
+    Решение о достижении цели на основании наблюдений.
+
+    При создании объекта staticmethod валидирует значения атрибутов и отклонит в случае противоречия.
     """
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
     # булевый признак достижения цели после выполнения шага
-    goal_reached: bool
+    goal_reached: bool = Field(strict=True)
 
-    # список критериев которые достигли указанных в goal.success_criteria
+    # список критериев что уже подтверждено
     satisfied_criteria: list[str] = Field(
         default_factory=list
     )
 
-    # список критериев которые не достигли указанных в goal.success_criteria
+    # список критериев что ещё не подтверждено
     missing_criteria: list[str] = Field(
         default_factory=list
     )
@@ -343,8 +348,85 @@ class GoalVerification(BaseModel):
         default_factory=list
     )
 
+    # список требующихся действий (еще не вызванных)
+    remaining_work: list[str] = Field(
+        default_factory=list,
+    )
+
     # сохранение причины
     reason: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_decision(self) -> "GoalVerification":
+
+        # Создаем переменную типа tuple кортеж (immutable object)
+        fields = (
+            self.satisfied_criteria,
+            self.missing_criteria,
+            self.evidence,
+            self.remaining_work,
+        )
+
+        for items in fields:
+            # Проверка в значениях атрибутов списков на элементы состоящими только из пробелов
+            if any(not item.strip() for item in items):
+                raise ValueError(
+                    "Verification lists must not contain blank items."
+                )
+
+            # Проверка в значениях атрибутов списков на дубликаты
+            if len(items) != len(set(items)):
+                raise ValueError(
+                    "Verification lists must not contain duplicates."
+                )
+
+        # Проверка на пересечение списков
+        overlap = set(self.satisfied_criteria) & set(self.missing_criteria)
+        if overlap:
+            raise ValueError(
+                "A criterion cannot be satisfied and missing at the same time."
+            )
+        
+        # Проверка на разные противоречия 
+        if self.goal_reached:
+            if self.missing_criteria:
+                raise ValueError(
+                    "Reached goal must not have missing criteria."
+                )
+        
+            if self.remaining_work:
+                raise ValueError(
+                    "Reached goal must not have remaining work."
+                )
+            
+            if not self.evidence:
+                raise ValueError(
+                    "Reached goal must have evidence."
+                )  
+               
+        return self
+
+# ----------------------------------
+# Входная схема Verifier
+# ----------------------------------
+class VerifierInput(BaseModel):
+    
+    """
+    Данные на основании которых verifier принимаети решения.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    goal: AgentGoal
+
+    observations: list[ActionObservation] = Field(
+        default_factory=list
+    )
+
+    # текущее состояние выполнения агента
+    current_state: dict[str, Any] = Field(
+        default_factory=list
+    )
+
 
 # ----------------------------------
 #  Схема состояния Агента (основная)

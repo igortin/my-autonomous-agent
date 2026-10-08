@@ -77,6 +77,12 @@ Use failed observations to understand why evidence is missing.
 Do not assume that a failed action returned the requested resource.
 Do not repeat a failed action unless there is a justified reason.
 Never interpret expected_result as evidence.
+
+Use remaining_work as guidance for missing evidence.
+It is not an executable plan.
+Validate every proposed check against available_actions.
+If repeated observation is needed to resolve conflicting or
+possibly stale evidence, such a read is justified.
 """
 
 #####################################
@@ -122,6 +128,9 @@ async def replanner_node(
                             
                             # читаем список missing_criteria заполненный на verifier_node из state
                             "missing_criteria": state.get("replan_feedback",[]),
+
+                            # читаем список возможно нужных действий
+                            "remaining_work": (state.get("verification") or {}).get("remaining_work", []),
 
                             # передаем list of dicts разрешенных действий 
                             "available_actions": [ 

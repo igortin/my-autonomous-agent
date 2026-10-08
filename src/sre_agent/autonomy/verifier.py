@@ -1,64 +1,22 @@
-from sre_agent.model import model
-
-from sre_agent.state import GoalVerification
-
-import json
-
-from langchain_core.messages import (
-    HumanMessage,
-    SystemMessage,
-)
-from langchain_core.runnables import RunnableConfig
-from sre_agent.state import AgentGoal, SREAgentState
-
-from sre_agent.autonomy.lifecycle import has_unrecoverable_error
 from typing import Literal
 
-from sre_agent.state import ActionObservation
+from langchain_core.runnables import RunnableConfig
 
-VERIFIER_SYSTEM_PROMPT = """
-You are the Verifier of a read-only autonomous SRE agent.
+from sre_agent.agents.verifier_agent import verify_goal
 
-Your responsibility is to determine whether the informational
-AgentGoal has been reached.
+from sre_agent.autonomy.lifecycle import has_unrecoverable_error
 
-Use only:
-- AgentGoal;
-- completed ActionObservations.
-
-Rules:
-1. Return only GoalVerification.
-2. Check every success criterion separately.
-3. A criterion is satisfied only when supported by an observation.
-4. Do not invent Kubernetes state, logs, events or root causes.
-5. If evidence is insufficient, set goal_reached=false.
-6. Put all missing information into missing_criteria.
-7. Tool execution success does not automatically mean goal success.
-8. goal_reached=true only when every success criterion is supported.
-9. If available tools cannot provide evidence required by a success
-   criterion, leave that criterion in missing_criteria and explain
-   the capability limitation. Do not mark it satisfied using
-   weaker substitute evidence.
-
-Each ActionObservation contains:
-- action_id: the executed action identifier;
-- success: whether the action completed successfully;
-- result: observed data or error details;
-- error: execution failure description.
-
-Use result as evidence of environment state only when success=true.
-For failed observations, use result and error as diagnostic information.
-Never treat expected_result as an observed fact.
-"""
-
-# Инициализация LLM с структуированным выводом по схеме 
-verifier_model = model.with_structured_output(
-    GoalVerification
+from sre_agent.state import (
+    AgentGoal,
+    ActionObservation,
+    SREAgentState,
+    VerifierInput,
 )
 
-#####################################
-# Verifier node
-#####################################
+
+################################################
+# адаптером между state графа и агентом проверки 
+################################################
 async def verifier_node(
         state: SREAgentState,
         config: RunnableConfig,
@@ -78,26 +36,31 @@ async def verifier_node(
             for item in (state.get("observations") or [])
         ]
 
-        # Вызов LLM и выполнеям проверку достижения goal.succes_criteries на основе результатов выполненных шагов
-        verification = await verifier_model.ainvoke(
-            [
-                SystemMessage(content=VERIFIER_SYSTEM_PROMPT),
-                HumanMessage(content=json.dumps(
-                    {
-                        "goal": goal.model_dump(mode="json"),
-                        "observations": observations,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )),
-            ],
-            config=config
+        # Создаем объект класса 
+        verifier_input = VerifierInput(
+            goal=goal,
+            observations=observations,
+            current_state={
+                "iteration_count": state.get(
+                    "iteration_count", 0
+                ),
+                "max_iterations": state.get(
+                    "max_iterations"
+                ),
+                "completed_step_ids": state.get(
+                    "completed_step_ids"
+                ) or [],
+                "pending_action": (
+                    state.get("pending_step_result") is not None
+                ),
+            },
         )
 
         
-        # Валидируем Оценку достаточности шагов и получаем объект класса GoalVerification
-        result = GoalVerification.model_validate(
-            verification
+        # Вызываем оценку достижение цели
+        result = await verify_goal(
+            verifier_input,
+            config=config,
         )
 
         # LangGraph перехватывает и записывает в state объект GoalVerification (решение Verifier) и список missing_criteria
@@ -130,25 +93,17 @@ def route_after_verification(
         "unrecoverable_error",
         "human_escalation_required",
 ]:
-    """
-    Порядок проверок здесь принципиален:
-        1. Ошибка.
-        2. Human escalation.
-        3. Goal reached.
-        4. Max iterations.
-        5. Replan.
-    """
-
+    
     # Ошибки имеют наивысший приоритет.
-    # проверка наличия ошибок на какой-либо предыдущей ноде
+    # Проверка наличия ошибок на какой-либо предыдущей ноде
     if has_unrecoverable_error(state):
         return "unrecoverable_error"
 
-    # проверяем нужно ли пользовательское согласие
+    # Проверяем нужно ли пользовательское согласие
     if state.get("human_escalation_required", False):
         return "human_escalation_required"
 
-    # решение advance_iteration_node действительно управляет маршрутом
+    # Решение advance_iteration_node действительно управляет маршрутом
     termination_reason = state.get("termination_reason")
 
     if termination_reason in {
@@ -158,11 +113,25 @@ def route_after_verification(
         return termination_reason
 
 
-    # Проверяем результат завершённой итерации.
-    verification = state.get("verification")
+    # Проверяем результат одной завершённой итерации lifcycle
+    verification = state.get("verification") or {}
 
-    # определяем маршрут
-    if verification and verification.get("goal_reached"):
+
+    # Сначало проверим достигнута ли цель
+    if verification.get("goal_reached") is True:
         return "goal_reached"
 
+
+    """ Проверка лимита количеств итераций lifecycle """
+
+    max_iterations = state.get("max_iterations")
+
+    iteration_count = state.get("iteration_count", 0)
+
+    if max_iterations is None or max_iterations < 1:
+        return "unrecoverable_error"
+
+    if iteration_count >= max_iterations:
+        return "max_iterations_reached"
+    
     return "replan"
