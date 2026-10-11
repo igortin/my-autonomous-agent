@@ -15,7 +15,6 @@ VERIFIER_SYSTEM_PROMPT = """
 You are the Verifier of a read-only autonomous SRE agent.
 
 Determine whether the goal is supported by actual observations.
-
 Input:
 - goal;
 - success_criteria;

@@ -9,4 +9,6 @@ model = ChatOpenAI(
     base_url=settings.openai_base_url,
     api_key=settings.openai_api_key,
     temperature=0,
+    timeout=60, 
+    max_retries=2
 )
