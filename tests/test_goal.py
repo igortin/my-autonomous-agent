@@ -74,6 +74,7 @@ def test_agent_goal_is_stored_separately_from_messages():
             "do not modify other deployments",
         ],
         max_iterations=1,
+        deterministic_rules=[],
     )
 
     state: SREAgentState = {
@@ -94,6 +95,8 @@ def test_agent_goal_is_stored_separately_from_messages():
             "do not modify other deployments",
         ],
         "max_iterations": 1,
+        "deterministic_rules": [],
+
     }
 
 ########################################################
@@ -110,6 +113,7 @@ def test_agent_goal_rejects_zero_iterations():
             ],
             constraints=[],
             max_iterations=0,
+            deterministic_rules=[],
         )
 
 
@@ -123,6 +127,7 @@ def test_agent_goal_requires_success_criterion():
             success_criteria=[],
             constraints=[],
             max_iterations=5,
+            deterministic_rules=[],
         )
 
 
@@ -137,5 +142,6 @@ def test_agent_goal_rejects_unknown_fields():
             success_criteria=[],
             constraints=[],
             max_iterations=5,
-            destructive_mode=False
+            destructive_mode=False,
+            deterministic_rules=[],
         )

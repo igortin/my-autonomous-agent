@@ -1,14 +1,19 @@
 import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
+
 from langchain_core.runnables import RunnableConfig
 
 from sre_agent.model import model
+
 from sre_agent.state import (
     GoalVerification,
     VerifierInput,
 )
 
+from sre_agent.autonomy.deterministic import (
+    evaluate_pod_ready,
+)
 
 
 VERIFIER_SYSTEM_PROMPT = """
@@ -69,15 +74,19 @@ verifier_model = model.with_structured_output(
 ##################################
 # Helper функция 
 ##################################
-
 def validate_verification(
     verifier_input: VerifierInput,
     verification: GoalVerification,
 ) -> GoalVerification:
     """
-    Проверить согласованность объекта verification (решения) с исходной целью.
+    Полезные проверки контракта решения GoalVerification.
 
-    Тоесть учтены все исходные критерии успешности.
+    Валидация согласованности объекта verification (РЕШЕНИЕ) с исходной ЦЕЛЬЮ.
+
+    - модель учла все исходные критерии;
+    - модель не добавила неизвестные критерии;
+    - goal_reached согласован со списками критериев;
+    - при успехе есть хотя бы одно успешное observation.
     """
 
     # Читаем данные из входного объекта класса VerifierInput
@@ -121,7 +130,7 @@ def validate_verification(
 
     if verification.goal_reached:
 
-        # Проверка успешности выполнения хотя бы 1 шага в рамках одной итерации lifecycle
+        # Проверка успешности выполнения хотя бы одного шага в рамках одной итерации lifecycle
         has_successful_observation = any(
             observation.success
             for observation in verifier_input.observations
@@ -129,7 +138,7 @@ def validate_verification(
 
         """Дополнительный предохранитель от объявления успеха без наблюдений"""
         
-        # Поднимаем исключение если все шаги одной итерции lifecycle выполнились неуспешно 
+        # При успехе есть хотя бы одно успешное observation.
         if not has_successful_observation:
             raise ValueError(
                 "Reached goal requires at least one successful observation"
@@ -139,9 +148,9 @@ def validate_verification(
 
 
 ##################################
-# Функция Verifier Agent 
+#  Helper функция проверки LLM критериев
 ##################################
-async def verify_goal(
+async def verify_goal_with_llm(
     verifier_input: VerifierInput,
     config: RunnableConfig | None = None,
 ) -> GoalVerification:
@@ -183,3 +192,189 @@ async def verify_goal(
         verifier_input,
         verification,
     )
+
+
+##################################
+# Функция Verifier Agent
+##################################
+async def verify_goal(
+        verifier_input: VerifierInput,
+        config: RunnableConfig | None = None,
+) -> GoalVerification:
+    """
+    Функция определения достигнута ЦЕЛЬ (AgentGoal) или требуется еще итерация lifecycle с новым exection_plan.
+
+    Ответственость:
+    - Проверка достижения критериев успешности с помощью специальной Python функции на основе детеримированного правила;
+    - Проверка достижения критериев успешности с помощью LLM;
+    - Определение достигнута ЦЕЛЬ или нет, на основе достигнутых критериев успешности;
+    - Создание решения на основе класса GoalVerification и передача в ноду verifier_node
+    """
+
+    
+    # Читаем цель из входного параметра объекта verifier_input созданного на verifier_node
+    goal = verifier_input.goal
+
+    """ Проверка критериев успешности с помощью специальных Python функций на основе детермированных правил. """
+
+    # Определяем, какие критерии успешности принадлежат и должны быть проверены Python.
+    # Создаем реестр таких критериев и связанных с ними детерминированных прави (создаются на момент определняи ЦЕЛИ),
+    # итерируемся по списку правил объектов класса PodReadyRule
+    deterministic_rules_by_criterion = {
+            rule.criterion: rule
+            for rule in goal.deterministic_rules
+    }
+
+
+    # Проверяем критерии на достижения согласно детерминирванному правилу,
+    # путем вызова специальной функции проверки готовности одной поды
+    # и создаем список результатов CheckResult
+    deterministic_results = [
+        evaluate_pod_ready(
+                rule, 
+                verifier_input.observations
+        ) for rule in goal.deterministic_rules
+    ]
+
+    """ Создаем контейнеры сохранения артифактов и в дальнейшем формирования решения GoalVerification """
+    
+    # Создание контейнера для хранения ДОСТИГНУТЫХ успешных критериев 
+    satisfied: set[str] = set()
+
+    # Создание контейнера для хранения доказательств, 
+    # что успешные критерии были достигнуты 
+    evidence: list[str] = []
+
+    # Создание контейнера для хранения НЕОБХОДИМЫХ ДЕЙСТВИЙ, 
+    # которые нужно выполнить для достижения оставшихся успешных критериев 
+    # и формирования нового execution_plan в рамках новой итерации lifecycle.
+    remaining_work: list[str] = []
+
+
+    # Итерируемся по списку результатов обьектам CheckResult созданными проверкой Python 
+    for result in deterministic_results:
+
+        # Проверяем ЕСТЬ данные, и условие ВЫПОЛНЕННО согласно детермированному правилу
+        if result.status == "passed":
+            satisfied.add(result.criterion)
+
+        if result.evidence is not None:
+            evidence.append(result.evidence)
+
+        if result.remaining_work is not None:
+            remaining_work.append(result.remaining_work)
+
+    
+    """ Проверка критериев успешности с помощью LLM. """
+
+    # Создаем список критериев успешности, которые принадлежат и должны быть проверены LLM
+    llm_criteria = [
+        criterion 
+        for criterion in goal.success_criteria
+        # Критерии для LLM не указаны в реестре детерминированных правил  
+        if criterion not in deterministic_rules_by_criterion
+    ]
+
+    # Если существуют семантические LLM критерии
+    if llm_criteria:
+        # Создаём отдельную новую Цель c LLM критериями.
+        # model_validate повторно запускает валидаторы AgentGoal.
+        llm_goal = type(goal).model_validate(
+            {
+                **goal.model_dump(mode="python"),
+                "success_criteria": llm_criteria,               # перезаписываем в ЦЕЛИ новые критерии принадлежащие только LLM
+                "deterministic_rules": [],                      # перезаписываем в ЦЕЛИ значение пустым списком
+            }
+        )
+
+        # Создаем новый обьект VerifierInput на основе НОВОЙ ЦЕЛИ
+        llm_input = VerifierInput(
+            goal=llm_goal,
+            observations=verifier_input.observations,               # наблюдения собранные при выполнении всех ранее шагов
+            current_state=verifier_input.current_state
+        )
+
+        # Проверка достижения критериев успешности с помощью вызова LLM
+        llm_result = await verify_goal_with_llm(
+            llm_input,
+            config=config,
+        )
+
+
+        # Расширить существующее контейнер множество
+        # путем добавления списка достигнутых успешных критериев принадлежащих LLM
+        satisfied.update(llm_result.satisfied_criteria)
+
+        # Расширить существующий контейнер список
+        # путем добавления списка доказательств относящихся к достигнутым успешным критериям 
+        # принадлежащих LLM
+        evidence.extend(llm_result.evidence)
+
+        # Расширить существующий контейнер список
+        # путем добавления списка необходимых действий относящихся к НЕДОСТИГНУТЫМ успешным критериям 
+        # принадлежащих LLM
+        remaining_work.extend(llm_result.remaining_work)
+
+
+
+    """ Определим достигнута ли цель """
+
+    # Проверка списка успешных критериев в ЦЕЛЕ и определеям достигнутые
+    satisfied_criteria = [
+        criterion
+        for criterion in goal.success_criteria
+        if criterion in satisfied
+    ]
+
+
+    # Проверка списка успешных критериев в ЦЕЛЕ и определеям НЕ достигнутые
+    missing_criteria = [
+        criterion
+        for criterion in goal.success_criteria
+        if criterion not in satisfied
+    ]
+
+    # Определяем bool значение достигнута ЦЕЛЬ или нет
+    goal_reached = not missing_criteria
+
+
+    if goal_reached:
+        # Если ЦЕЛЬ достигнута, то очищаем список оставшихся действий  
+        # с целью исключения создания нового execution_plan 
+        remaining_work = []
+    else:
+        # Если ЦЕЛЬ не достигнута, но список оставшихся действий пустой, 
+        # то список искуственно заполняется с целью создания нового execution_plan 
+        # и новой итерации lifecycle
+        if not remaining_work:
+            remaining_work = [
+                f"Получить подтверждение: {criterion}"
+                for criterion in missing_criteria
+            ]
+        # Если ЦЕЛЬ НЕ ДОСТИГНУТА и список оставшихся действий заполнен
+        # то создается нового execution_plan и новая итерации lifecycle
+
+
+
+    """ Создание и валидация контракта объект GoalVerification (РЕШЕНИЕ) """
+
+    # Создаем решение, которое возращается в verifier_node
+    verification = GoalVerification(
+        goal_reached=goal_reached,
+        satisfied_criteria=satisfied_criteria,
+        missing_criteria=missing_criteria,
+        evidence=list(dict.fromkeys(evidence)),
+        remaining_work=list(dict.fromkeys(remaining_work)),
+        reason=(
+            "Все критерии подтверждены"
+            if goal_reached
+            else "Часть критериев не выполнена или недостаточно доказательств"
+        ),
+    )
+
+    # Валидация согласованности объекта verification (РЕШЕНИЕ) с исходной ЦЕЛЬЮ
+    return validate_verification(
+        verifier_input,
+        verification,
+    )
+    

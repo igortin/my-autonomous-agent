@@ -2,6 +2,28 @@ from typing import Literal, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from langgraph.graph import MessagesState
 
+from datetime import datetime
+
+# -------------------------
+#  Схема детерминированного правила готовности поды 
+# -------------------------
+class PodReadyRule(BaseModel):
+    model_config=ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    kind: Literal["pod_ready"]
+    
+    criterion: str = Field(min_length=1)
+
+    cluster_alias: str = Field(min_length=1)
+
+    namespace: str = Field(min_length=1)
+
+    pod_name: str = Field(min_length=1)
+
+
 # -------------------------
 #  Схема контракт ЦЕЛИ 
 # -------------------------
@@ -24,7 +46,7 @@ class AgentGoal(BaseModel):
         ),
     )
 
-    # определяет критерии, по которым evaluator поймёт, что работа завершена
+    # определяет критерии, по которым verifier поймёт, что работа завершена
     success_criteria: list[str] = Field(
         min_length=1,
         description=(
@@ -32,7 +54,7 @@ class AgentGoal(BaseModel):
         ),
     )
 
-    # безопасности ограничения
+    # ограничения для безопасности
     constraints: list[str] = Field(
         default_factory=list,
         description=(
@@ -45,9 +67,50 @@ class AgentGoal(BaseModel):
         ge=1,
         le=20,
         description=(
-            "Maximum number of autonomous control-loop iterations."
+            "Maximum number of autonomous control-loop iterations of lifecycle."
         ),
     )
+
+    # детермированные правила для Python проверки
+    deterministic_rules: list[PodReadyRule] = Field(
+        default_factory=list,
+    )
+
+    @model_validator(mode="after")
+    def validate_determinictic_rules(self) -> "AgentGoal":
+        """        
+        Проверка привязки каждого детерминированного правила к существующему критерию успешности.
+        """
+
+        # Читаем список успешных критериев для досижения цели       
+        criteria = self.success_criteria
+
+        if len(criteria) != len(set(criteria)):
+            raise ValueError(
+                "Success criteria must be unique"
+            )
+
+        # Создаем список критериев указанных в детерминированных правил       
+        rule_criteria = [ rule.criterion for rule in self.deterministic_rules]
+
+
+        if len(rule_criteria) != len(set(rule_criteria)):
+            raise ValueError(
+                "A criterion must have at most one deterministic rule"
+            )
+
+        # Определяем критерии в детерминированных правилах, 
+        # которые не существуют в списке успешных критериев
+        unknown = set(rule_criteria) - set(criteria)
+
+        # Проверка существующих детерминированных правил привязанных к несуществующим критерям успеха 
+        if unknown:
+            raise ValueError(
+                "Deterministic rules reference unknown criteria: "
+                f"{sorted(unknown)}"
+            )
+
+        return self
 
 
 # -------------------------
@@ -111,6 +174,9 @@ class ActionObservation(BaseModel):
     result: dict[str, Any] | None
 
     error: str | None
+
+    # время в которое зафиксировано наблюдение
+    observed_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> "ActionObservation":
@@ -424,7 +490,7 @@ class VerifierInput(BaseModel):
 
     # текущее состояние выполнения агента
     current_state: dict[str, Any] = Field(
-        default_factory=list
+        default_factory=dict,
     )
 
 

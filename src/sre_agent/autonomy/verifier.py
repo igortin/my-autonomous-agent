@@ -36,7 +36,7 @@ async def verifier_node(
             for item in (state.get("observations") or [])
         ]
 
-        # Создаем объект класса 
+        # Создаем объект класса VerifierInput из состояния графа
         verifier_input = VerifierInput(
             goal=goal,
             observations=observations,
@@ -57,7 +57,7 @@ async def verifier_node(
         )
 
         
-        # Вызываем оценку достижение цели
+        # Вызываем функцию оценку достижение цели из verifer_agent
         result = await verify_goal(
             verifier_input,
             config=config,

@@ -58,7 +58,31 @@ Use the user's requested limit when it is explicitly provided.
 
 Otherwise use 5.
 
-5. Separation of responsibilities
+5. deterministic_rules
+
+Use deterministic_rules for supported formal checks.
+
+Currently supported rule:
+- kind="pod_ready": check that a specific Pod has
+  status.conditions[type="Ready"].status == "True".
+
+For each rule:
+- copy criterion exactly from success_criteria;
+- specify cluster_alias, namespace and pod_name;
+- preserve the resource identity from the user request;
+- do not invent missing resource identifiers.
+
+Do not attach pod_ready to broader conditions such as:
+- the service is healthy;
+- the incident is resolved;
+- the root cause is established.
+
+If the criterion is not supported by an available rule,
+leave it for semantic verification.
+
+Do not generate Python expressions or executable code.
+
+6. Separation of responsibilities
 
 Do not create an action plan.
 Do not select tools.
@@ -80,6 +104,8 @@ async def goal_interpreter_node(
 ) -> dict:
     """
     Convert the latest user request into a validated AgentGoal.
+    
+    LLM здесь переводит запрос в контракт.
 
     Responsibilities:
     - read the latest HumanMessage;

@@ -8,6 +8,9 @@ from sre_agent.state import (
     SREAgentState,
 )
 
+from datetime import datetime, timezone
+
+
 #####################################
 # Observer node
 #####################################
@@ -46,6 +49,14 @@ def observer_node(
                 "Observation action_id does not match the executed action"
             )
 
+        # Время устанавливаем в которое зафиксировали наблюдение.
+        # Переменная observation теперь ссылается на обновлённую копию.
+        observation = observation.model_copy(
+            update={
+                "observed_at": datetime.now(timezone.utc),
+            }
+        )
+
         # Чтение всех собранных результатов выполненных шагов из состояния 
         # и добавление предудыщего шага результатов в контейнер  
         observations = [
@@ -64,13 +75,13 @@ def observer_node(
 
         # LangGraph перехватывает и записывает обнровленные контейнеры в состояние  
         return {
-            # Обновляем список результатов шагов
+            # Обновляем список результатов шагов в state
             "observations": observations,
-            # Обновляем список выполненных шагов
+            # Обновляем список выполненных шагов в state
             "completed_step_ids": completed_step_ids,
-            # Подготовливаем и очищаем контейнер для следующего вызова Tool
+            # Подготовливаем и очищаем контейнер для следующего вызова Tool в state
             "pending_step_result": None,
-            # Подготовливаем и очищаем для следующего шага
+            # Подготовливаем и очищаем для следующего шага в state
             "current_step": None,
         }
 
