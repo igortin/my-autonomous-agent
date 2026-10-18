@@ -55,7 +55,6 @@ async def verifier_node(
                 ),
             },
         )
-
         
         # Вызываем функцию оценку достижение цели из verifer_agent
         result = await verify_goal(
@@ -93,7 +92,11 @@ def route_after_verification(
         "unrecoverable_error",
         "human_escalation_required",
 ]:
-    
+    """"
+    Проверка границ выполения шагов в execution_plan в маршрутизация.
+
+    Здесь выполняется контроль соглсно harness engineering.
+    """
     # Ошибки имеют наивысший приоритет.
     # Проверка наличия ошибок на какой-либо предыдущей ноде
     if has_unrecoverable_error(state):

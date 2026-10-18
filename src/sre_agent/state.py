@@ -12,7 +12,7 @@ class PodReadyRule(BaseModel):
         extra="forbid",
         str_strip_whitespace=True,
     )
-
+    # Тип детерминированного парвила
     kind: Literal["pod_ready"]
     
     criterion: str = Field(min_length=1)
