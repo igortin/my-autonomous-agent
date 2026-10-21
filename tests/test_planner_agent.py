@@ -196,8 +196,8 @@ async def test_planner_receives_complete_context(monkeypatch, expected_plan):
             ),
 
             "environment_knowledge": {
-                "cluster": "docker-desktop-test",
-                "namespace": "default",
+                "cluster": "docker-desktop",
+                "namespace": "payments",
                 "workload": "payment-api",
             },
 
@@ -229,7 +229,9 @@ async def test_planner_receives_complete_context(monkeypatch, expected_plan):
 
     assert planner_payload["goal"]["description"] == test_goal.description
 
-    assert planner_payload["environment_knowledge"]["cluster"] == "docker-desktop-test"
+    assert planner_payload["environment_knowledge"]["cluster"] == "docker-desktop"
+
+    assert planner_payload["environment_knowledge"]["namespace"] == "payments"
 
     assert planner_payload["available_agents"]
 
@@ -267,7 +269,7 @@ async def test_planner_fails_without_goal():
 
 ###############################################
 # Unit Test planner_agent_node на ошибку формирования объекта AgentGoal
-# на пердыдущем шаге goal_interpreter_node
+# на предыдущем шаге goal_interpreter_node
 ###############################################
 @pytest.mark.asyncio
 async def test_planner_stops_after_goal_interpreter_error():

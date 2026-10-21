@@ -2,6 +2,8 @@ from sre_agent.state import ExecutionPlan, PlanStep, SREAgentState
 
 from pydantic import ValidationError
 
+
+
 from sre_agent.tools.kubernetes import (
     get_node_events_tool,
     get_node_tool,
@@ -10,6 +12,7 @@ from sre_agent.tools.kubernetes import (
     get_pod_tool,
     list_nodes_tool,
     list_pods_tool,
+    get_deployment_tool,
 )
 
 import logging
@@ -87,6 +90,7 @@ READ_ONLY_TOOL_REGISTRY = {
     "list_nodes_tool": list_nodes_tool,
     "get_node_tool": get_node_tool,
     "get_node_events_tool": get_node_events_tool,
+    "get_deployment_tool": get_deployment_tool,
 }
 
 #####################################

@@ -1,33 +1,69 @@
-from typing import Literal, Any
+from typing import Any, Literal, Union
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from langgraph.graph import MessagesState
 
 from datetime import datetime
 
 # -------------------------
-#  Схема детерминированного правила готовности поды 
+#  Класс детерминированного правила готовности одной pod 
 # -------------------------
 class PodReadyRule(BaseModel):
     model_config=ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
     )
-    # Тип детерминированного парвила
+    # Какую функцию проверки выбрать
     kind: Literal["pod_ready"]
-    
+
+    # Какой критерий цели закрывает проверка
     criterion: str = Field(min_length=1)
 
     cluster_alias: str = Field(min_length=1)
 
     namespace: str = Field(min_length=1)
 
+    # Какой ресурс проверять
     pod_name: str = Field(min_length=1)
 
+
+# -------------------------
+#  Класс детерминированного правила готовности deployment рекплик   
+# -------------------------
+class DeploymentReadyReplicasRule(BaseModel):
+
+    model_config=ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    
+    # Какую функцию проверки выбрать
+    kind: Literal["deployment_ready_replicas"]
+
+    # Какой критерий цели закрывает проверка
+    criterion: str = Field(min_length=1)
+
+    cluster_alias: str = Field(min_length=1)
+
+    namespace: str = Field(min_length=1)
+    
+    # Какой ресурс проверять
+    deployment_name: str = Field(min_length=1)
+
+
+# -------------------------
+#  Класс общий детермированных правил    
+# -------------------------
+
+# На формирвовании ЦЕЛИ (AgentGoal)
+# Псевдоним типа (type alias): одно имя для типа «или PodReadyRule, или DeploymentReadyReplicasRule».
+DeterministicRule = Union[PodReadyRule, DeploymentReadyReplicasRule]
 
 # -------------------------
 #  Схема контракт ЦЕЛИ 
 # -------------------------
 class AgentGoal(BaseModel):
+
     """
     Structured representation of the desired environment state.
 
@@ -71,15 +107,17 @@ class AgentGoal(BaseModel):
         ),
     )
 
-    # детермированные правила для Python проверки
-    deterministic_rules: list[PodReadyRule] = Field(
+    # список детермированных правил для Python
+    deterministic_rules: list[DeterministicRule] = Field(
         default_factory=list,
     )
 
     @model_validator(mode="after")
     def validate_determinictic_rules(self) -> "AgentGoal":
         """        
-        Проверка привязки каждого детерминированного правила к существующему критерию успешности.
+        Проверяет, что в детерминированных правилах criterion существует в success_criteria, и запрещает несколько правил для одного критерия.
+
+        Здесь текст критериев должен совпадать точно, потому что в реализации он используется как ключ привязки.
         """
 
         # Читаем список успешных критериев для досижения цели       
@@ -96,7 +134,7 @@ class AgentGoal(BaseModel):
 
         if len(rule_criteria) != len(set(rule_criteria)):
             raise ValueError(
-                "A criterion must have at most one deterministic rule"
+                "A criterion must be uniq in deterministic rule"
             )
 
         # Определяем критерии в детерминированных правилах, 
@@ -170,7 +208,7 @@ class ActionObservation(BaseModel):
     success: bool = Field(
         strict=True                 # включает строгую проверку, без преобразования строк и чисел.
     )
-
+    # описывает бизнес данные записанные Tool на executor_node
     result: dict[str, Any] | None
 
     error: str | None

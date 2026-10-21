@@ -1,11 +1,17 @@
 from dataclasses import dataclass
+
 from datetime import datetime, timezone
+
 from typing import Literal
 
 from sre_agent.state import (
     ActionObservation,
+    DeploymentReadyReplicasRule,
     PodReadyRule,
 )
+
+
+from sre_agent.state import DeterministicRule
 
 # Новый строковой тип данных
 CheckStatus = Literal[
@@ -14,7 +20,9 @@ CheckStatus = Literal[
     "unknown"                   # Доказательств недостаточно
 ]
 
+########################################################
 # Класс хранения результата детерминированной проверки
+########################################################
 @dataclass(frozen=True)
 class CheckResult:
     criterion: str
@@ -23,9 +31,9 @@ class CheckResult:
     remaining_work: str| None
 
 
-
-
-
+########################################################
+# Специальная функция Python проверки детерминированного правила PodReadyRule
+########################################################
 def evaluate_pod_ready(
         rule: PodReadyRule,
         observations: list[ActionObservation],
@@ -35,12 +43,10 @@ def evaluate_pod_ready(
 ) -> CheckResult:
 
     """
-    Специальная функция проверки состояния одной поды Ready="True".
+    Специальная функция Python проверки состояния одной поды Ready="True".
 
-    Функция жестко должна быть связана с детерминированным правилом PodReadyRule (правило проверяет готовность одного Pod).
+    Функция связана с детерминированным правилом PodReadyRule (правило проверяет готовность одного Pod).
     
-    Для других правил нужны отдельные аналогичные функции. 
-
     Ответственность:
     1) Найти наблюдение observation для нужного ресурса Pod, который указан в rule детерминированном правиле;
     2) Проверить актуальность и пригодность данных в наблюдении observation шага по нужному ресурсу Pod;
@@ -55,7 +61,7 @@ def evaluate_pod_ready(
     # Создадим строго типизироанный список
     matching: list[ActionObservation] = []
 
-    # Внутренняя Helper функция
+    # Внутренняя helper-функция
     def unknown(message: str) -> CheckResult:
         """Создание объекта класса CheckResult с статусом неизвестно"""
         return CheckResult(
@@ -67,7 +73,7 @@ def evaluate_pod_ready(
 
     """ Найти наблюдение observation для нужного ресурса Pod, который указан в rule детерминированном правиле. """
 
-    # Определение нового списка шагов подходящих для проверки детерминированным правилом
+    # # 1. Найти наблюдения observations нужного Pod
     matching: list[ActionObservation] = []
 
     # итерируемся по фактическим результатам шагов
@@ -77,19 +83,19 @@ def evaluate_pod_ready(
         result = observation.result or {}
 
         if result.get("action") != "get_pod":
-            # завершаем проверку объекта observation и переходим к следующей итерации 
+            # завершаем проверку объекта и переходим к следующему observation
             continue
         
         # Проверка совподения кластер алиас в фактическом результате шага 
         # и поле детерминированного правила  
         if result.get("cluster_alias", "").strip().lower() != rule.cluster_alias.strip().lower():
-            # завершаем проверку объекта observation и переходим к следующей итерации 
+            # завершаем проверку объекта и переходим к следующему observation
             continue
 
         # Проверка совподения имени неймспейс в фактическом результате шага 
         # и поле детерминированного правила  
         if result.get("namespace").strip().lower() != rule.namespace.strip().lower():
-            # завершаем проверку объекта observation и переходим к следующей итерации 
+            # завершаем проверку объекта и переходим к следующему observation
             continue
 
         
@@ -97,7 +103,7 @@ def evaluate_pod_ready(
         pod = result.get("pod")
 
         if not isinstance(pod, dict):
-            # завершаем проверку объекта observation и переходим к следующей итерации 
+            # завершаем проверку объекта и переходим к следующему observation
             continue
 
         # Читаем метаданные из фактического результата шага
@@ -126,7 +132,6 @@ def evaluate_pod_ready(
             )
 
 
-
     """ Проверить актуальность и пригодность данных в наблюдении observation шага по нужному ресурсу Pod. """
 
     # Без времени нельзя надёжно выбрать актуальное наблюдение.
@@ -145,7 +150,7 @@ def evaluate_pod_ready(
 
     # Создаем список с одним саммым свежим наблюдением
     latest = [ observation 
-              for observation in observations
+              for observation in matching
               if observation.observed_at == latest_time
     ]
 
@@ -265,7 +270,6 @@ def evaluate_pod_ready(
         )
 
 
-   
     """ Проверить фиксированное условие готовности поды Сonditions.status == "True". """
 
     # Читаем поле status тип данных str 
@@ -280,7 +284,6 @@ def evaluate_pod_ready(
         f"observed_at={observation.observed_at.isoformat()}; "
         f"pod.status.conditions[type=Ready].status={value!r}"
     )
-
 
     # Возращаем объект при успешной проверке детерминированного правила  
     if value == "True":
@@ -303,7 +306,6 @@ def evaluate_pod_ready(
             ),
         )
 
-    
     # Обработчик в value некорректного значения 
     return unknown(
         "Повторно проверить Pod: Ready имеет значение "
@@ -312,3 +314,346 @@ def evaluate_pod_ready(
 
 
 
+########################################################
+# Специальная функция Python проверки детерминированного правила DeploymentReadyReplicasRule
+########################################################
+def evaluate_deployment_ready_replicas(
+    rule: DeploymentReadyReplicasRule,
+    observations: list[ActionObservation],
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = 60,
+) -> CheckResult:
+    """
+    Специальная функция Python проверки состояния ready_replicas >= spec.replicas в одном Deployment.
+
+    Функция жестко связана с детерминированным правилом DeploymentReadyReplicasRule.
+    
+    Ответственность:
+    1) Найти наблюдение observation для нужного ресурса Deployment, который указан в rule детерминированном правиле;
+    2) Проверить актуальность и пригодность данных в наблюдении observation шага по нужному ресурсу;
+    3) Найти в найденном наблюдении observation данные по Deployment;
+    4) Проверить фиксированное условие ready_replicas >= spec.replicas.
+    """
+
+    # Создаем переменную для определения актуальности наблюдения
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must contain a timezone")
+
+    # Проверка входного параметра 
+    if (type(max_age_seconds) is not int or max_age_seconds < 0):
+        raise ValueError(
+            "max_age_seconds must be a non-negative integer"
+        )
+
+    # Создание переменой ресурс
+    resource = f"{rule.cluster_alias}/{rule.namespace}/{rule.deployment_name}"
+
+    # Создание helper-функция 
+    def unknown(message: str) -> CheckResult:
+        return CheckResult(
+            criterion=rule.criterion,
+            status="unknown",
+            evidence=None,
+            remaining_work=message,
+        )
+
+
+    """ Найти наблюдение observation для нужного ресурса Deployment, который указан в rule детерминированном правиле. """
+
+    # Создаем контейнер для хранения наблюдений observation с нужным ресурсом Deployment 
+    matching: list[ActionObservation] = []
+
+
+    for observation in observations:
+        result = observation.result
+
+        if not isinstance(result, dict):
+           # завершаем проверку объекта и переходим к следующему observation
+            continue
+
+
+        if result.get("action") != "get_deployment":
+             # завершаем проверку объекта и переходим к следующему observation
+            continue
+
+        # Читаем из observation.result.result_metadataкоторый содержит
+        # значения cluster_alias и cluster_context
+        cluster_alias = result.get("cluster_alias")
+
+        if not isinstance(cluster_alias, str):
+            # переходим к следующему наблюдению observation 
+            continue
+
+        if cluster_alias.strip().lower() != rule.cluster_alias.strip().lower():
+            # переходим к следующему наблюдению observation 
+            continue
+
+        if result.get("namespace") != rule.namespace:
+            # переходим к следующему наблюдению observation 
+            continue        
+
+        if result.get("deployment_name") != rule.deployment_name:
+            # переходим к следующему наблюдению observation 
+            continue
+
+        # Добавляем наблюдения observation нужного Deployment
+        matching.append(observation)
+
+    # Проверка на отсутствие нужных наблюдений в контейнере 
+    if not matching:
+        # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+        # с целью создания нового execution_plan в рамках новой итерации lifecycle
+        return unknown(
+            f"Прочитать Deployment {resource}"
+        )
+
+
+    """ 2. Без времени нельзя надёжно выбрать последнее чтение. """
+
+    for observation in matching:
+        # Читаем время созднания наблюдения observation
+        timestamp = observation.observed_at
+
+        if (
+            timestamp is None
+            or timestamp.tzinfo is None
+            or timestamp.utcoffset() is None
+        ):
+            # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+            # с целью создания нового execution_plan в рамках новой итерации lifecycle
+            return unknown(
+                f"Повторно прочитать Deployment {resource}: нет времени наблюдения с часовым поясом"
+                )
+
+        # Находим самое свежую дату создания observation в контейнере сохраненных наблюдений с нужным ресурсом Deployment
+        latest_time = max(observation.observed_at for observation in matching)
+
+        # Находим самое свежее observation в контейнере сохраненных наблюдений 
+        # с нужным ресурсом Deployment по найденной дате
+        latest = [ 
+            observation 
+            for observation in matching
+            if observation.observed_at == latest_time
+            ]
+
+
+        if len(latest) != 1:
+            # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+            # с целью создания нового execution_plan в рамках новой итерации lifecycle
+            return unknown(
+                f"Повторно прочитать Deployment {resource}: последнее наблюдение неоднозначно"
+            ) 
+
+        # Находим самое свежее наблюдение связанное с нужным ресурсом Deployment
+        observation = latest[0]
+        # Читаем снова дату из самого свежего наблюдения
+        timestamp = observation.observed_at
+        assert timestamp is not None
+
+        # Проверяем актуальность найденного наблюдения
+        age = (now - timestamp).total_seconds()
+    
+        
+        if age < 0 or age > max_age_seconds:
+            # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+            # с целью создания нового execution_plan в рамках новой итерации lifecycle
+            return unknown(
+                f"Повторно прочитать Deployment {resource}: наблюдение устарело или имеет время из будущего"            
+            )
+
+        if not observation.success:
+            return unknown(
+                f"Повторно прочитать Deployment {resource}: последнее наблюдение завершилось ошибкой"
+        )
+
+    
+    """  3. Сохраняем консервативную политику твоей Pod-проверки: ошибка после подтверждения требует нового чтения. Важно для ошибок с result=None. """
+    
+    # Поиск наблюдений с НЕ УСПЕШНЫМ выполнением STEP в execution_plan
+    for item in observations:
+        if item.success:
+            continue
+
+        # Определение даты создания наблюдения на не успешно выполненом STEP
+        failure_time = item.observed_at
+
+        if (
+            failure_time is None
+            or failure_time.tzinfo is None
+            or failure_time.utcoffset() is None
+            # сравнение даты создания наблюдения на не успешно выполненом шаге
+            # и найденное ранее свежее наблюдение связанное с нужным ресурсом Deployment
+            or failure_time >= timestamp
+        ):
+            # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+            # с целью создания нового execution_plan в рамках новой итерации lifecycle            
+            return unknown(
+                f"Повторно прочитать Deployment {resource} после неуспешного действия" 
+            )
+
+
+    """ 4. Проверить структуру и идентичность самого объекта. """
+    # Читаем результат dict из наблюдения, 
+    result = observation.result
+
+    assert isinstance(result, dict)
+
+    # читаем бизнес данные по ресурсу deployment.to_dict()
+    deployment = result.get("deployment")
+
+    if not isinstance(deployment, dict):
+        # возращаем объект CheckResult с атрибутом remaining_work включающим текст
+        # с целью создания нового execution_plan в рамках новой итерации lifecycle
+        return unknown(
+            "В результате отсутствует объект Deployment"
+        )
+
+    # Читаем metadata из обьекта deployment сериализованного в dict
+    metadata = deployment.get("metadata")
+
+    # Читаем spec из обьекта deployment сериализованного в dict
+    spec = deployment.get("spec")
+
+    # Читаем status из обьекта deployment сериализованного в dict
+    status = deployment.get("status")
+
+    # Проверка типов бизнес данных metadata, spec или status
+    if not all( isinstance(value, dict) for value in (metadata, spec, status)):
+        return unknown(
+            "В Deployment отсутствуют metadata, spec или status"
+        )
+
+    # Проверка идентичности ресурса на соотвествие в детермированном правиле
+    if (
+        metadata.get("name") != rule.deployment_name 
+        or 
+        metadata.get("namespace") != rule.namespace
+    ):
+        return unknown(
+            "Метаданные Deployment не соответствуют правилу"
+        )
+
+    # Проверка состояния Deployment что он не удаляется 
+    if metadata.get("deletion_timestamp") is not None:
+        return unknown(
+            "Deployment удаляется: готовность не подтверждена"
+        )
+    
+    """ 5. Проверить, что контроллер обработал текущее поколенее конфигурации spec Deployment. """
+
+    # Текущее поколение желаемой конфигурации .metadata.generation в Deployment
+    # При изменении spec, например образа или количества реплик, Kubernetes увеличивает этот номер.
+    generation = metadata.get("generation")
+
+    # Контроллер Deployment уже увидел поколение и отразил его обработку в статусе .status.observedGeneration
+    observed_generation = status.get("observed_generation")
+
+
+    # Проверка корректности значений .metadata.generation и .status.observerdGeneration
+    if type(generation) is not int or generation < 1:
+        return unknown(
+            "Отсутствует корректное значение generation поколение конфигурации Deployment"
+        )
+
+    if type(observed_generation) is not int or observed_generation < 1:
+        return unknown(
+            "Отсутствует корректное значение observed_generation поколение конфигурации Deployment"
+        )
+
+    # Проверка обработки Deployment контроллером последней желаемой конфигурации spec
+    if observed_generation < generation:
+        return unknown(
+            "Дождаться обработки текущего желаемого поколения Deployment и повторить чтение"
+        )
+
+    
+    """ 6. Получить и проверить сравниваемые значения. """
+
+    # Читаем значение .spec.replicas из спецификации Deployment, полученную из найденного наблюдения observation
+    desired_replicas = spec.get("replicas")
+
+    # Читаем значение .status.readyReplicas из состояния Deployment, 
+    # полученную из найденного наблюдения observation
+    ready_replicas = status.get("ready_replicas")
+
+    # Проверка корректности типа данных и значений 
+    if (type(desired_replicas) is not int or desired_replicas < 0):
+        return unknown(
+            "Нет корректных целочисленных значений "
+            "spec.replicas"
+        )
+
+    if (type(ready_replicas) is not int or ready_replicas < 0):
+        return unknown(
+            "Нет корректных целочисленных значений "
+            "status.ready_replicas"
+        )
+
+    # Формируем доказательство
+    evidence = (
+        f"action_id={observation.action_id}; "
+        f"resource={resource}; "
+        f"observed_at={timestamp.isoformat()}; "
+        f"generation={generation}; "
+        f"observed_generation={observed_generation}; "
+        f"ready_replicas={ready_replicas}; "
+        f"desired_replicas={desired_replicas}"
+    )
+
+
+    """ 7. Здесь выполняется проверка самого условия критерия. """
+    # Пригодные данные подтверждают выпонение условия
+    if ready_replicas >= desired_replicas:
+        return CheckResult(
+            criterion=rule.criterion,
+            status = "passed",
+            evidence=evidence,
+            remaining_work=None,
+        )
+
+    # Пригодные данные опровергают выпонение условия
+    return CheckResult(
+        criterion=rule.criterion,
+        status="failed",
+        evidence=evidence,
+        remaining_work=(
+            f"У Deployment {resource} готовы {ready_replicas} из {desired_replicas} реплик. "
+            "Выяснить причину неготовности и повторить проверку."
+        ),
+    )
+
+
+###################################
+# Диспетчер детерминированных правил
+###################################
+def evaluate_deterministic_rule(
+ rule: DeterministicRule,
+    observations: list[ActionObservation],
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = 60,
+) ->  CheckResult:
+    # диспетчер выбирает функцию по классу PodReadyRule
+    if isinstance(rule, PodReadyRule):
+        return evaluate_pod_ready(
+            rule,
+            observations,
+            now=now,
+            max_age_seconds=max_age_seconds,
+        )
+    # диспетчер выбирает функцию по классу DeploymentReadyReplicasRule
+    if isinstance(rule, DeploymentReadyReplicasRule):
+        return evaluate_deployment_ready_replicas(
+            rule,
+            observations,
+            now=now,
+            max_age_seconds=max_age_seconds,
+        )
+
+    raise TypeError(
+        f"Unsupported deterministic rule: {type(rule).__name__}"
+    )

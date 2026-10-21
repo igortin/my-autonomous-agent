@@ -32,9 +32,7 @@ initial_state: SREAgentState = {
     "goal": goal.model_dump(),
 }
 
-# print("исходная формулировка пользователя: ", initial_state["messages"][0].content)
 
-# print("нормализованный execution contract: ", initial_state["goal"])
 
 ########################################################
 # Тест 1 — корректная цель

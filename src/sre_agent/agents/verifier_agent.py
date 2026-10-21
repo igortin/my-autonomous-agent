@@ -12,9 +12,8 @@ from sre_agent.state import (
 )
 
 from sre_agent.autonomy.deterministic import (
-    evaluate_pod_ready,
+    evaluate_deterministic_rule,
 )
-
 
 VERIFIER_SYSTEM_PROMPT = """
 You are the Verifier of a read-only autonomous SRE agent.
@@ -218,22 +217,17 @@ async def verify_goal(
     """ Проверка критериев успешности с помощью специальных Python функций на основе детермированных правил. """
 
     # Определяем, какие критерии успешности принадлежат и должны быть проверены Python.
-    # Создаем реестр таких критериев и связанных с ними детерминированных прави (создаются на момент определняи ЦЕЛИ),
-    # итерируемся по списку правил объектов класса PodReadyRule
+    # Создаем реестр таких критериев и связанных с ними детерминированных правил (которые создаются на момент определняи ЦЕЛИ),
     deterministic_rules_by_criterion = {
             rule.criterion: rule
             for rule in goal.deterministic_rules
     }
 
-
-    # Проверяем критерии на достижения согласно детерминирванному правилу,
-    # путем вызова специальной функции проверки готовности одной поды
-    # и создаем список результатов CheckResult
+    # Проверяем выполнение детерминирванных правил на основе наблюдений,
+    # путем запуска диспетчера для вызова специальных фунцкий проверки готовности одного пода или деплоймент реплик
+    # создается список результатов CheckResult
     deterministic_results = [
-        evaluate_pod_ready(
-                rule, 
-                verifier_input.observations
-        ) for rule in goal.deterministic_rules
+        evaluate_deterministic_rule(rule, verifier_input.observations) for rule in goal.deterministic_rules
     ]
 
     """ Создаем контейнеры сохранения артифактов и в дальнейшем формирования решения GoalVerification """

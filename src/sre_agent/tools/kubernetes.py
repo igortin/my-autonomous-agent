@@ -64,7 +64,8 @@ class KubernetesToolInput(BaseModel):
         "get_pod_events",
         "list_nodes",
         "get_node",
-        "get_node_events"
+        "get_node_events",
+        "get_deployment",                                   # расширяем работой с деплойментом
     ] = Field(
         default="list_pods", 
         description="Kubernetes action to execute"
@@ -87,19 +88,40 @@ class KubernetesToolInput(BaseModel):
             "default_namespace from clusters.yaml."
         ),
     )
-    pod_name: Optional[str] = Field(default=None, description="pod_name in Kubernetes cluster")
 
-    node_name: Optional[str] = Field(default=None, description="node_name in Kubernetes cluster")
+    pod_name: Optional[str] = Field(
+        default=None, 
+        description="pod_name in Kubernetes cluster",
+        )
 
-    container_name: Optional[str] = Field(default=None, description="container_name in running Pod")
+    node_name: Optional[str] = Field(
+        default=None, 
+        description="node_name in Kubernetes cluster",
+        )
 
-    tail_lines: Optional[int] = Field(default=10, ge=1, le=300, description="number of lines in Pod's log")
+    container_name: Optional[str] = Field(
+        default=None, 
+        description="container_name in running Pod",
+        )
+
+    tail_lines: Optional[int] = Field(
+        default=10, 
+        ge=1, 
+        le=300, 
+        description="number of lines in Pod's log",
+        )
+
+    deployment_name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description="Deployment name in the selected namespace",
+    )
 
     # decoractor после парсинга всех полей проверить, что для pod/node операций переданы обязательные параметры.
     @model_validator(mode="after")
     def validate_required_fields(self):
         if self.action:
-            if not self.cluster_alias:
+            if not self.cluster_alias.strip():
                 raise ValueError("cluster_alias is required")
 
         if self.action in {"get_pod", "get_pod_logs", "get_pod_events"}:
@@ -109,7 +131,11 @@ class KubernetesToolInput(BaseModel):
         if self.action in {"get_node", "get_node_events"}:
             if not self.node_name:
                 raise ValueError("node_name is required")
-    
+
+        if self.action in {"get_deployment"}:
+            if not self.deployment_name:
+                  raise ValueError("deployment_name is required")
+
         return self
 
 
@@ -272,6 +298,7 @@ def _execute_kubernetes_api(
             "get_pod",
             "get_pod_logs",
             "get_pod_events",
+            "get_deployment",
         }
 
         # Проверяем namespace указан
@@ -369,6 +396,25 @@ def _execute_kubernetes_api(
                 ],
             }
 
+        if args.action == "get_deployment":
+            apps_v1 = client.AppsV1Api(
+                api_client=api_client,
+            )                    
+            deployment = apps_v1.read_namespaced_deployment(
+                name=args.deployment_name,
+                namespace=namespace,
+                _request_timeout=30,                
+            )
+
+            return {
+                "ok": True,
+                **result_metadata,
+                "namespace": namespace,
+                "action": args.action,
+                "deployment_name": args.deployment_name,
+                "deployment": deployment.to_dict(),
+            }
+
         if args.action == "list_nodes":
             nodes = v1.list_node()
 
@@ -452,6 +498,8 @@ def _execute_kubernetes_api(
             api_client.close()
 
 
+
+
 ###########################################################
 ## Tool Schemas для специалиста `kubernetes_agent_subgraph`
 ###########################################################
@@ -463,7 +511,6 @@ class ListPodsToolInput(BaseModel):
             "Logical Kubernetes cluster alias."
         )
     )
-    
     namespace: Optional[str] = Field(
         default=None,
         min_length=1,
@@ -482,7 +529,6 @@ class GetPodToolInput(BaseModel):
             "Logical Kubernetes cluster alias. "
         )
     )
-    
     namespace: Optional[str] = Field(
         default=None,
         min_length=1,
@@ -492,7 +538,6 @@ class GetPodToolInput(BaseModel):
             "default_namespace from clusters.yaml."
         ),
     )
-
     pod_name: str = Field(
         ...,                                            # значит обязательное поле и значение по default отсутствует
         description="Name of the Kubernetes pod."
@@ -506,7 +551,6 @@ class GetPodLogsToolInput(BaseModel):
             "Logical Kubernetes cluster alias. "
         )
     )
-
     namespace: Optional[str] = Field(
         default=None,
         min_length=1,
@@ -516,17 +560,14 @@ class GetPodLogsToolInput(BaseModel):
             "default_namespace from clusters.yaml."
         ),
     )
-
     pod_name: str = Field(
         ...,                                            # значит обязательное поле и значение по default отсутствует
         description="Name of the Kubernetes pod to get logs from."
     )
-
     container_name: Optional[str] = Field(
         default=None,
         description="Optional container name if the pod has multiple containers."
     )
-
     tail_lines: int = Field(
         default=10,
         ge=1,
@@ -542,7 +583,6 @@ class GetPodEventsToolInput(BaseModel):
             "Logical Kubernetes cluster alias. "
         )
     )
-
     namespace: Optional[str] = Field(
         default=None,
         min_length=1,
@@ -552,7 +592,6 @@ class GetPodEventsToolInput(BaseModel):
             "default_namespace from clusters.yaml."
         ),
     )
-
     pod_name: str = Field(
         ...,                                            # значит обязательное поле и значение по default отсутствует
         description="Name of the Kubernetes pod to get events from."
@@ -575,7 +614,6 @@ class GetNodeToolInput(BaseModel):
             "Logical Kubernetes cluster alias. "
         )
     )
-    
     node_name: str = Field(
         ...,                             # значит node_name обязательное поле и значение по умолчанию отсутствует.
         description="Name of Kubernetes node."
@@ -589,11 +627,48 @@ class GetNodeEventsToolInput(BaseModel):
             "Logical Kubernetes cluster alias. "
         )
     )
-    
     node_name: str = Field(
         ...,
         description="Name of the Kubernetes node to get events for."
     )
+
+ 
+class GetDeploymentToolInput(BaseModel):
+    model_config = {
+        "extra": "forbid",
+        "str_strip_whitespace": True,
+    }
+
+    cluster_alias: str = Field(
+        min_length=1,
+        description="Logical Kubernetes cluster alias."
+        )
+    
+    namespace: str = Field(
+        min_length=1,
+        description=(
+            "Explicit Kubernetes namespace. "
+            "If omitted or null, use the selected cluster's "
+            "default_namespace from clusters.yaml."
+        ),
+    )
+
+    deployment_name: str = Field(
+        min_length=1,
+        description="Name of the Kubernetes deployment."
+    )
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ###########################################################
@@ -754,6 +829,27 @@ def get_node_events_tool(
         action="get_node_events",
         node_name=node_name,
     )
+
+
+@tool(
+    name_or_callable="get_deployment_tool",
+    args_schema=GetDeploymentToolInput,
+    return_direct=False,
+)
+def get_deployment_tool(
+    cluster_alias: str,
+    namespace: str,
+    deployment_name: str,
+) -> dict:
+    """Read one Deployment, including desired and ready replicas."""
+
+    return _run_kubernetes_action(
+        action="get_deployment",
+        cluster_alias=cluster_alias,
+        namespace=namespace,
+        deployment_name=deployment_name,
+    )
+
 
 ###########################################################
 ## HELPER load_kubernetes_clusters 

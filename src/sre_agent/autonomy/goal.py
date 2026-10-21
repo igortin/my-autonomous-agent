@@ -63,19 +63,35 @@ Otherwise use 5.
 Use deterministic_rules for supported formal checks.
 
 Currently supported rule:
+
 - kind="pod_ready": check that a specific Pod has
   status.conditions[type="Ready"].status == "True".
 
-For each rule:
+- kind="deployment_ready_replicas":
+  check that one Deployment has
+  status.ready_replicas >= spec.replicas.
+
+For deployment_ready_replicas:
+- copy criterion exactly from success_criteria;
+- specify cluster_alias, namespace and deployment_name;
+- use this rule only when the criterion asks whether all
+  currently desired replicas are ready;
+- do not use this rule for an explicit fixed replica target,
+  such as "at least three ready replicas";
+- do not use this rule as proof of rollout completion,
+  service availability or incident resolution;
+- do not invent missing resource identifiers.
+
+For pod_ready:
 - copy criterion exactly from success_criteria;
 - specify cluster_alias, namespace and pod_name;
 - preserve the resource identity from the user request;
 - do not invent missing resource identifiers.
+- Do not attach pod_ready to broader conditions such as:
+    - the service is healthy;
+    - the incident is resolved;
+    - the root cause is established.
 
-Do not attach pod_ready to broader conditions such as:
-- the service is healthy;
-- the incident is resolved;
-- the root cause is established.
 
 If the criterion is not supported by an available rule,
 leave it for semantic verification.

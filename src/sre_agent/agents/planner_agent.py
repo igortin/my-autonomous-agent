@@ -24,6 +24,7 @@ from sre_agent.tools.kubernetes import (
     get_pod_tool,
     list_nodes_tool,
     list_pods_tool,
+    get_deployment_tool,
 )
 
 ################################################
@@ -71,7 +72,6 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         description="Read recent logs from one pod.",
         requires_approval=False,
         args_schema=get_pod_logs_tool.args_schema.model_json_schema(),
-
     ),
     AvailableAction(
         name="get_pod_events_tool",
@@ -88,7 +88,6 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         description="List Kubernetes nodes.",
         requires_approval=False,
         args_schema=list_nodes_tool.args_schema.model_json_schema(),
-
     ),
     AvailableAction(
         name="get_node_tool",
@@ -107,6 +106,18 @@ READ_ONLY_AVAILABLE_ACTIONS = [
         requires_approval=False,
         args_schema=get_node_events_tool.args_schema.model_json_schema(),
     ),
+    AvailableAction(
+        name="get_deployment_tool",
+        agent="kubernetes",
+        action_type="read",
+        description=(
+            "Read one Deployment, including spec.replicas, "
+            "status.ready_replicas, metadata.generation "
+            "and status.observed_generation."
+        ),
+        requires_approval=False,
+        args_schema=get_deployment_tool.args_schema.model_json_schema(),
+    ),    
 ]
 
 
