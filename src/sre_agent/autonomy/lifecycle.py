@@ -29,6 +29,7 @@ def initialize_lifecycle_node(
             "iteration_count": 0,
             "max_iterations": 1,
             "termination_reason": "unrecoverable_error",
+            "action_history": [],
         }
 
     try:
@@ -45,9 +46,10 @@ def initialize_lifecycle_node(
             "completed_step_ids": [],
             "pending_step_result": None,
             "observations": [],
+            "action_history": [],        
             "verification": None,
             "replan_feedback": [],
-            "execution_error": None,            
+            "execution_error": None,
         }
     except Exception:
         return {
@@ -57,6 +59,7 @@ def initialize_lifecycle_node(
             "completed_step_ids": [],
             "pending_step_result": None,
             "observations": [],
+            "action_history": [],
             "verification": None,
             "replan_feedback": [],
             "execution_error": None,

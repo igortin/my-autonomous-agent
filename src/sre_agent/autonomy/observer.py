@@ -18,8 +18,9 @@ def observer_node(
         state: SREAgentState
 ) -> dict:
     """"
-    Проверить и сохранить результат выполненного действия инструмента в state.
+    Проверить результат выполненного действия и сохранить наблюдение и историю попыток.
     """
+ 
     # Провереям наличие ошибок на Executor.
     if state.get("execution_error"):
         return {}
@@ -37,10 +38,10 @@ def observer_node(
         }
 
     try:
-        # Валидируем и создаем объект класса PlanStep
+        # Валидируем и создаем Step объект класса PlanStep
         step = PlanStep.model_validate(pending["step"])
 
-        # Валидируем и создаем объект класса ActionObservation
+        # Валидируем и создаем НАБЛЮДЕНИЕ объект класса ActionObservation
         observation = ActionObservation.model_validate(pending["observation"])
 
         # Проверка соответствия предыдущего собранного результата на шаге и самого шага 
@@ -49,18 +50,30 @@ def observer_node(
                 "Observation action_id does not match the executed action"
             )
 
-        # Время устанавливаем в которое зафиксировали наблюдение.
-        # Переменная observation теперь ссылается на обновлённую копию.
-        observation = observation.model_copy(
-            update={
-                "observed_at": datetime.now(timezone.utc),
+        # Создаём новую проверенную запись с исходным действием.
+        # Время, уже установленное для наблюдения, сохраняем.
+        observation = ActionObservation.model_validate(
+            {
+                #сериализация обьекта Python-словарь
+                **observation.model_dump(mode="python"),
+                # дабавляем в наблюдение выполненное действие с ним связанное
+                "action": step.action.model_dump(mode="python"),
+                "observed_at":  datetime.now(timezone.utc)
             }
         )
 
+
         # Чтение всех собранных результатов выполненных шагов из состояния 
-        # и добавление предудыщего шага результатов в контейнер  
+        # и добавление Наблюдения текущего шага в контенйер для Verifier
         observations = [
             *(state.get("observations") or []),
+            observation.model_dump(mode="json"),
+        ]
+
+        # Чтение всех собранных результатов выполненных шагов из состояния 
+        # и добавление Наблюдения текущего шага в контенйер для Replanner
+        action_history = [
+            *(state.get("action_history") or []),
             observation.model_dump(mode="json"),
         ]
 
@@ -75,9 +88,11 @@ def observer_node(
 
         # LangGraph перехватывает и записывает обнровленные контейнеры в состояние  
         return {
-            # Обновляем список результатов шагов в state
+            # Перезаписываем список наблюдений в state для Verifier
             "observations": observations,
-            # Обновляем список выполненных шагов в state
+            # Перезаписываем список наблюдений в state для Replanner
+            "action_history": action_history,
+            # Перезаписываем список выполненных шагов в state
             "completed_step_ids": completed_step_ids,
             # Подготовливаем и очищаем контейнер для следующего вызова Tool в state
             "pending_step_result": None,

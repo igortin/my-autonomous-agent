@@ -63,9 +63,11 @@ def normalize_action_result(
             success, 
             result, 
             error,
+            action,
         )
 
     ToolMessage создается после выполнения инструмента и содержит результат.    
+
     В ToolMessage есть поля: 
     1) content   - Результат инструмента, передаваемый LLM (str или list[str | dict]);
     2) artifact  - Дополнительный результат инструмента для кода приложения; не передаётся LLM как содержимое сообщения; (Any)

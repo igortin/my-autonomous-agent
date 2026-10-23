@@ -152,7 +152,7 @@ class AgentGoal(BaseModel):
 
 
 # -------------------------
-#  Схема AgentAction (проверяемое НАМЕРЕНИЕ)
+#  Схема AgentAction (НАМЕРЕНИЕ ДЕЙСТВИЕ)
 # -------------------------
 class AgentAction(BaseModel):
     """
@@ -189,7 +189,7 @@ class AgentAction(BaseModel):
     risk_level: Literal["read", "low", "medium", "high"]
 
 # -------------------------
-#  Схема ActionObservation (Проверяемый факт выполнения)
+#  Схема ActionObservation (Наблюдение)
 # -------------------------
 class ActionObservation(BaseModel):
     """
@@ -204,33 +204,45 @@ class ActionObservation(BaseModel):
         min_length=1
     )
     
-    # описывает выполнение действия 
+    # Выполнен успешно или нет step из exeсution_plan
     success: bool = Field(
         strict=True                 # включает строгую проверку, без преобразования строк и чисел.
     )
-    # описывает бизнес данные записанные Tool на executor_node
+
+    # Сохранение бизнес данных из Tool на executor_node
     result: dict[str, Any] | None
 
     error: str | None
 
-    # время в которое зафиксировано наблюдение
+    # Время в которое зафиксировано наблюдение
     observed_at: datetime | None = None
+
+    # Какое действие привело к этому наблюдению
+    action: AgentAction | None = None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> "ActionObservation":
         """
         Проверка на противоречивость значений в атрибутах
         """
+
+        # Проверка идентификаторы совпадают в action шага и наблюдение создавшемся на этом шаге
+        if (self.action is not None and self.action.action_id != self.action_id):
+            raise ValueError("Observation action_id must match action.action_id")
+
+        # Проверка step выполнен успешно    
         if self.success:
+            # Проверка на противоречивость значений в атрибутах
             if self.error is not None:
                 raise ValueError(
                     "Successful observation must not contain an error"
                 )
 
+            # Проверка на противоречивость значений в атрибутах
             if self.result is None:
                 raise ValueError(
                     "Successful observation must contain a result"
-                ) 
+                )
         else:
            if not self.error:
                 raise ValueError(
@@ -592,3 +604,7 @@ class SREAgentState(MessagesState, total=False):
 
     # ошибка безопасного выполнения шага
     execution_error: dict[str, Any] | None
+
+    # История выполненных попыток текущего lifecycle.
+    # Каждый элемент соответствует схеме ActionObservation, представление в dict
+    action_history: list[dict[str, Any]]

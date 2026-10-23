@@ -240,7 +240,7 @@ async def executor_node(
             )
 
         else:
-            # Нормализуем результат и создаем объект observation класса ActionObservation
+            # Нормализуем и создаем Наблюдение класса ActionObservation
             observation = normalize_action_result(
                 action_id=action.action_id,
                 raw_result=raw_result,
@@ -252,8 +252,7 @@ async def executor_node(
             observation.model_dump_json(),
         )
 
-        # в pending_step_result попадает как результата выполнения инструмента 
-        # уже сериализованный контракт observation класса ActionObservation
+        # в pending_step_result попадает step и observation наблюдение
         return {
             "current_step": step.id,
             "pending_step_result": {
