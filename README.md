@@ -1,6 +1,6 @@
 # my-autonomous-agent
 
-## Week 9 Lesson 5
+## Week 9 Lesson 6
 
 Защита от превышения попыток вызова иснтрумента — политика остановки повторов по известному состоянию Deployment ресурса.     
 
@@ -21,7 +21,7 @@ langgraph dev
 
 Создай запрос 1:
 ```
-Проверь, что у Deployment colvir-back-deployment
+Проверь, что у Deployment colvir-front-deployment
 в namespace colvir-test кластера docker-desktop
 количество готовых реплик не меньше текущего
 желаемого количества из spec.replicas.
