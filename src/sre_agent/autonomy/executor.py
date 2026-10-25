@@ -1,8 +1,8 @@
 from sre_agent.state import ExecutionPlan, PlanStep, SREAgentState
-
 from pydantic import ValidationError
+import logging
 
-
+from sre_agent.state import ActionObservation
 
 from sre_agent.tools.kubernetes import (
     get_node_events_tool,
@@ -15,13 +15,18 @@ from sre_agent.tools.kubernetes import (
     get_deployment_tool,
 )
 
-import logging
 
-from sre_agent.state import ActionObservation
+from sre_agent.autonomy.duplicate_guard import (
+    build_action_attempt,
+    get_environment_fingerprint,
+    is_duplicate_limit_reached,
+)
 
 from sre_agent.autonomy.observation import (
     normalize_action_result,
 )
+
+
 
 # basic configuration
 logging.basicConfig(
@@ -116,19 +121,25 @@ async def executor_node(
         state: SREAgentState,
 ) -> dict:
     """"
-    Node Executor
     Вызывает Tool и записывает фактический результат в state.pending_step_result 
-
     Отвественость:
     - проверить validated step
     - проверить allowed tool
     - получить raw result
     """
-    
     step = None
 
+    # операция распаковки: все элементы полученного списка добавляются по одному в новый список
+    previous_attempts = [
+        *(state.get("action_attempts") or [])
+    ]
+
+
+    """ Блок определения следующего шага PlanStep """
+
     try:
-        # Определяем СЛУДУЮЩИЙ шаг
+
+        # Определяем СЛЕДУЮЩИЙ шаг
         step = select_next_executable_step(state)
 
         if step is None:
@@ -199,8 +210,11 @@ async def executor_node(
         # Проверяем аргументы шага по args_schema (напрмер схема ListPodsToolInput) инструмента ДО вызова,
         # чтобы ошибка planner'а стала execution_error, а не исключением в графе
         try:
-            tool.args_schema.model_validate(action.arguments)
-            
+            validated_arguments = tool.args_schema.model_validate(action.arguments)
+
+            # Сериализуем в dict
+            normalized_arguments = validated_arguments.model_dump(mode="json")       
+
         except ValidationError as exc:
             return {
                 "current_step": step.id,
@@ -210,9 +224,66 @@ async def executor_node(
                         f"Invalid arguments for {action.tool!r}: "
                         f"{exc.errors(include_url=False)}"
                     ),
-                    "tool_args": action.arguments,
+                    "tool_args": normalized_arguments,
                 },
             }
+
+
+        """ Блок обработки обьектов попыток вызова интсрумента класс ActionAttempt  """
+
+        #  Создаем отпечаток состояния ресурса Deployment 
+        environment_fingerprint = get_environment_fingerprint(
+            action=action,
+            normalized_arguments=normalized_arguments,
+            action_history=state.get("action_history") or [],
+            args_schema=tool.args_schema,
+        )
+
+        #  Создаем кандидата новую Попытку вызова инструмента
+        attempt = build_action_attempt(
+            action=action,
+            normalized_arguments=normalized_arguments,
+            environment_fingerprint=environment_fingerprint,
+        )
+
+        # Читаем список предыдущих попыток
+        # previous_attempts = state.get("action_attempts") or []
+
+        # Защита от превешния порога (занчение 2) повторения идентичных вызовов инструмента
+        if is_duplicate_limit_reached(
+            candidate=attempt,
+            attempts=previous_attempts,
+            max_attempts=2,                     
+        ):
+            return {
+                "current_step": step.id,
+                "pending_step_result": None,
+                "execution_error": {
+                    "type": "duplicate_action_blocked",
+                    "message": (
+                        "Identical action reached its attempt limit "
+                        "for the last known environment state"
+                    ),
+                    "tool": action.tool,
+                    "duplicate_key": attempt.duplicate_key,
+                },
+                "human_escalation_required": True,
+                "human_escalation_reason": (
+                    f"Повторный вызов {action.tool!r} заблокирован: "
+                    "исчерпан лимит попыток при том же "
+                    "последнем известном состоянии среды."
+                ),
+            }
+
+
+        #  Записываем обьект попытка вызова иснтрумента в список
+        updated_attempts = [
+            *previous_attempts,
+            attempt.model_dump(mode="json"),
+        ]
+
+
+        """ Блок выплнения Шага, вызова Инструмента и получения результата и наблюдения ActionObservation. """
 
         # iteration_count counts completed on lifecycle iterations.
         # The currently executing iteration is therefore count + 1.
@@ -228,8 +299,8 @@ async def executor_node(
         )
 
         try:     
-            # Вызов асинхронно tool и передать ему аргументы из step.tool_args.
-            raw_result = await tool.ainvoke(action.arguments)
+            # Вызов инструмента и полечуение бизнес данных по ресурсу 
+            raw_result = await tool.ainvoke(normalized_arguments)
         
         except Exception as exc:
             observation = ActionObservation(
@@ -239,8 +310,10 @@ async def executor_node(
                 error=f"{type(exc).__name__}: {exc}",
             )
 
+        # должен работать после успешного выполнения try блока
         else:
-            # Нормализуем и создаем Наблюдение класса ActionObservation
+        
+            # Нормализуем бизнес данные и создаем наблюдение класса ActionObservation
             observation = normalize_action_result(
                 action_id=action.action_id,
                 raw_result=raw_result,
@@ -259,6 +332,7 @@ async def executor_node(
                 "step": step.model_dump(mode="json"),
                 "observation": observation.model_dump(mode="json"),
             },
+            "action_attempts": updated_attempts,
             "execution_error": None,
         }
 
@@ -267,6 +341,7 @@ async def executor_node(
         return {
             "current_step": step.id if step is not None else None,
             "pending_step_result": None,
+            "action_attempts": updated_attempts,
             "execution_error": {
                 "type": "executor_error",
                 "message": str(exc),

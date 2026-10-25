@@ -155,6 +155,7 @@ def build_graph():
             "execute_next_step": "executor_node",
             "verify_goal": "verifier_node",
             "stop": "unrecoverable_error_node",
+            "human_escalation": "human_escalation_node",
         },
     )
 

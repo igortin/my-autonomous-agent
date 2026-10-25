@@ -60,7 +60,7 @@ class DeploymentReadyReplicasRule(BaseModel):
 DeterministicRule = Union[PodReadyRule, DeploymentReadyReplicasRule]
 
 # -------------------------
-#  Схема контракт ЦЕЛИ 
+#  Схема ЦЕЛЬ 
 # -------------------------
 class AgentGoal(BaseModel):
 
@@ -152,7 +152,7 @@ class AgentGoal(BaseModel):
 
 
 # -------------------------
-#  Схема AgentAction (НАМЕРЕНИЕ ДЕЙСТВИЕ)
+#  Схема AgentAction (НАМЕРЕНИЕ)
 # -------------------------
 class AgentAction(BaseModel):
     """
@@ -189,11 +189,11 @@ class AgentAction(BaseModel):
     risk_level: Literal["read", "low", "medium", "high"]
 
 # -------------------------
-#  Схема ActionObservation (Наблюдение)
+#  Схема ActionObservation
 # -------------------------
 class ActionObservation(BaseModel):
     """
-    Фактический результат попытки выполнить AgentAction.
+    наблюдение описывает результат после вызова.
     """
     model_config = ConfigDict(
         extra="forbid",
@@ -545,9 +545,38 @@ class VerifierInput(BaseModel):
 
 
 # ----------------------------------
+# Cхема описнаия Попытки вызова инструмента
+# ----------------------------------
+class ActionAttempt(BaseModel):
+    """
+    Попытка вызова инструмента и состояние перед вызовом.
+
+    Описывает условия перед вызовом.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str = Field(
+        min_length=1
+    )
+
+    action_fingerprint: str = Field(
+        min_length=1
+    )
+
+    environment_fingerprint: str = Field(
+        min_length=1
+    )
+
+    duplicate_key: str = Field(
+        min_length=1
+    )
+
+
+
+
+# ----------------------------------
 #  Схема состояния Агента (основная)
 # ----------------------------------
-
 # total=False: чтобы не требовать все поля при вызове графа
 class SREAgentState(MessagesState, total=False):
     """
@@ -608,3 +637,6 @@ class SREAgentState(MessagesState, total=False):
     # История выполненных попыток текущего lifecycle.
     # Каждый элемент соответствует схеме ActionObservation, представление в dict
     action_history: list[dict[str, Any]]
+
+    # условия перед вызовом
+    action_attempts: list[dict[str, Any]]

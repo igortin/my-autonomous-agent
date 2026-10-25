@@ -118,13 +118,22 @@ def route_after_observer(
 ) -> Literal[
     "execute_next_step",
     "verify_goal",
-    "stop"
+    "stop",
+    "human_escalation", 
 ]:
     """
     Функция проверяет execution_plan и выполняет передачу контроля 
     на следующий шаг в рамках одной итерации lifecycle. 
     """
-    
+
+    # Читаем ошибку если есть, которая могла появитяс на executor_node из состояния
+    error = state.get("execution_error") or {}
+
+    #  Проверка на превышение пыток вызова интсрумента
+    if error.get("type") == "duplicate_action_blocked":
+        return "human_escalation"
+
+
     # Проверка ошибок выполнения Tool на Executor
     # следущие зависимые step-ы не могут быть вызваны при ошибке на предыдущем шаге.
     if state.get("execution_error"):
