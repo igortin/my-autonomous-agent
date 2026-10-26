@@ -428,6 +428,7 @@ TerminationReason = Literal[
     "max_iterations_reached",
     "unrecoverable_error",
     "human_escalation_required",
+    "investigation_budget_exhausted",
 ]
 
 
@@ -640,3 +641,9 @@ class SREAgentState(MessagesState, total=False):
 
     # условия перед вызовом
     action_attempts: list[dict[str, Any]]
+
+    # Общий лимит вызовов инструментов за расследование (все итерации и планы).
+    max_tool_calls: int
+
+    # Executor остановился перед следующим вызовом из-за бюджета.
+    investigation_budget_exhausted: bool

@@ -91,6 +91,7 @@ def route_after_verification(
         "max_iterations_reached",
         "unrecoverable_error",
         "human_escalation_required",
+        "investigation_budget_exhausted",
 ]:
     """"
     Проверка границ выполения шагов в execution_plan в маршрутизация.
@@ -123,6 +124,12 @@ def route_after_verification(
     # Сначало проверим достигнута ли цель
     if verification.get("goal_reached") is True:
         return "goal_reached"
+
+    """ Проверка лимита бюджет вызова иниструментов """
+
+    # Проверяем бюджет вызова иниструментов
+    if state.get("investigation_budget_exhausted", False):
+        return "investigation_budget_exhausted"
 
 
     """ Проверка лимита количеств итераций lifecycle """

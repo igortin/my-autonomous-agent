@@ -108,6 +108,15 @@ Do not claim that the goal has already been achieved.
 Do not answer the user.
 
 Return only AgentGoal.
+
+
+For diagnostic or informational goals, success means that
+the requested explanation is supported by observations.
+
+Do not convert a request to explain Not Ready into a requirement
+to make the workload Ready.
+
+Budget exhaustion is a stopping condition, not a success criterion.
 """
 
 # обертка над базовой моделью

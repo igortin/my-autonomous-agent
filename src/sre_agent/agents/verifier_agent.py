@@ -62,6 +62,48 @@ For a reached goal:
 For an unreached goal:
 - missing_criteria must be non-empty;
 - remaining_work must describe what still needs verification.
+
+For diagnostic goals:
+
+- Distinguish symptoms from immediate causes and deeper root causes.
+- Not Ready alone is a symptom, not an explanation.
+- A readiness probe error explains the failed check, but does not
+  necessarily explain why the application cannot answer it.
+- Claim only the level of cause supported by observations.
+- Each causal claim must reference action_id and specific observed facts.
+- Do not require the workload to become Ready unless restoration
+  is explicitly part of the goal.
+
+Requirements for reason:
+
+- Explain the substantive result of the semantic verification.
+- Do not merely repeat that all criteria are satisfied.
+- Write the explanation in the language of the user's goal.
+
+For diagnostic goals, reason must include:
+
+1. The confirmed immediate cause, if established.
+2. How that cause produces the observed symptom.
+3. References to action_id and the specific supporting facts.
+4. Any uncertainty or missing evidence about the deeper root cause.
+
+If the cause is not established, explicitly say so and explain
+what evidence is missing.
+
+Distinguish observations from hypotheses:
+
+- Ready=False is a symptom, not a cause.
+- A readiness probe connection refusal confirms that the probe
+  could not establish a connection to its configured destination
+  at the time of the check.
+- A declared containerPort does not prove that the application
+  actually listens on that port.
+- Application startup logs alone do not prove the listening port.
+- Do not claim a probe port mismatch as confirmed unless the
+  application's actual listening port is supported by observations.
+
+For diagnostic goals, do not require the workload to become Ready
+unless recovery is explicitly requested.  
 """
 
 verifier_model = model.with_structured_output(
@@ -244,6 +286,10 @@ async def verify_goal(
     # и формирования нового execution_plan в рамках новой итерации lifecycle.
     remaining_work: list[str] = []
 
+    # Содержательный вывод семантической проверки.
+    # None означает, что LLM-проверка не выполнялась.
+    llm_reason: str | None = None
+
 
     # Итерируемся по списку результатов обьектам CheckResult созданными проверкой Python 
     for result in deterministic_results:
@@ -294,6 +340,8 @@ async def verify_goal(
             config=config,
         )
 
+        # Записываем из LLM результата причину 
+        llm_reason = llm_result.reason
 
         # Расширить существующее контейнер множество
         # путем добавления списка достигнутых успешных критериев принадлежащих LLM
@@ -349,6 +397,23 @@ async def verify_goal(
         # то создается нового execution_plan и новая итерации lifecycle
 
 
+    """ Сформируем итоговый гибридный reason на основе Python и LLM результатов"""
+
+    overall_reason = (
+        "Все критерии подтверждены."
+        if goal_reached
+        else "Часть критериев не выполнена или недостаточно доказательств."
+        )
+
+    # Конкатинация результатов проверок Python и LLM модели:
+    if llm_reason:
+        reason = (
+            f"{overall_reason}\n\n"
+            f"Вывод по семантическим критериям:\n{llm_reason}"
+        )
+    else:
+        reason = overall_reason
+
 
     """ Создание и валидация контракта объект GoalVerification (РЕШЕНИЕ) """
 
@@ -359,11 +424,7 @@ async def verify_goal(
         missing_criteria=missing_criteria,
         evidence=list(dict.fromkeys(evidence)),
         remaining_work=list(dict.fromkeys(remaining_work)),
-        reason=(
-            "Все критерии подтверждены"
-            if goal_reached
-            else "Часть критериев не выполнена или недостаточно доказательств"
-        ),
+        reason=reason
     )
 
     # Валидация согласованности объекта verification (РЕШЕНИЕ) с исходной ЦЕЛЬЮ

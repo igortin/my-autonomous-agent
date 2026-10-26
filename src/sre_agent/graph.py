@@ -18,6 +18,7 @@ from sre_agent.autonomy.lifecycle import (
     initialize_lifecycle_node,
     max_iterations_reached_node,
     unrecoverable_error_node,
+    investigation_budget_exhausted_node,
 )
 
 from sre_agent.autonomy.executor import executor_node
@@ -29,6 +30,11 @@ from sre_agent.autonomy.replanner import (
     replanner_node,
     route_after_replanner,
 )
+
+
+
+
+
 
 ###################################################
 ## GRAPH
@@ -76,7 +82,6 @@ def build_graph():
         advance_iteration_node,
     )
 
-
     builder.add_node(
         "replanner_node",
         replanner_node,
@@ -102,6 +107,11 @@ def build_graph():
         human_escalation_node,
     )
 
+    builder.add_node(
+        "investigation_budget_exhausted_node",
+        investigation_budget_exhausted_node,
+    )
+  
     # -------------------------
     # START
     # -------------------------
@@ -183,6 +193,8 @@ def build_graph():
                 "unrecoverable_error_node",
             "human_escalation_required":
                 "human_escalation_node",
+            "investigation_budget_exhausted": 
+                "investigation_budget_exhausted_node",
         },
     )
    
@@ -219,6 +231,11 @@ def build_graph():
     builder.add_edge(
             "human_escalation_node",
             END,
+        )
+
+    builder.add_edge(
+        "investigation_budget_exhausted_node",
+        END,
         )
 
     # -------------------------

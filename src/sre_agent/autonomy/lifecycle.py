@@ -36,6 +36,14 @@ def initialize_lifecycle_node(
         # Валидация цели
         goal = AgentGoal.model_validate(raw_goal)
 
+        # Читаем лимит вызовов инструментов за расследование из состояния 
+        # или инициализация по умочанию бюджета в 20 вызовов интструмента в рамках всех итериаций lifecycle. 
+        max_tool_calls = state.get("max_tool_calls", 20)
+
+        # Проверяем значение лимита числовое 
+        if (not isinstance(max_tool_calls, int) or max_tool_calls < 1):
+                raise ValueError("max_tool_calls must be a positive integer")
+
         # LangGraph перехватывает вывод и записывает значения в атрибуты состояния SREAgentState
         return {
             "iteration_count": 0,
@@ -51,6 +59,8 @@ def initialize_lifecycle_node(
             "verification": None,
             "replan_feedback": [],
             "execution_error": None,
+            "max_tool_calls": max_tool_calls,
+            "investigation_budget_exhausted": False,
         }
     except Exception:
         return {
@@ -64,7 +74,7 @@ def initialize_lifecycle_node(
             "action_attempts": [],
             "verification": None,
             "replan_feedback": [],
-            "execution_error": None,
+            "execution_error": None,       
         }
 
 ############################
@@ -142,9 +152,9 @@ def has_unrecoverable_error(
             "messages": [
                 AIMessage(content=(
                         "Автономный lifecycle остановлен из-за ошибки, "
-                        "после которой безопасное продолжение невозможно."
-                        "\n\n".join(sections
-                        )))
+                        "после которой безопасное продолжение невозможно.\n\n" 
+                        + "\n\n".join(sections)
+                        ))
             ],
         }
 
@@ -171,9 +181,9 @@ def goal_reached_node(
     if description := goal.get("description"):
         sections.append(f"Цель: {description}")
 
-    # Добавляем рассуждения в контейнер
+    # Добавляем Вывод в контейнер
     if reason := verification.get("reason"):
-        sections.append(f"Результат проверки:\n{reason}")
+        sections.append(f"Вывод:\n{reason}")
 
     # Добавляем в контейнер удовлетворенные критерии успешности
     satisfied = verification.get("satisfied_criteria") or []
@@ -303,3 +313,46 @@ def human_escalation_node(
         ],
     }
 
+
+######################################
+#  Node Бюджет вызова инструментов исчерпан 
+######################################
+def investigation_budget_exhausted_node(
+    state: SREAgentState,
+) -> dict:
+
+    verification = state.get("verification") or {}
+
+    evidence = verification.get("evidence") or []
+
+    missing = verification.get("missing_criteria") or []
+
+    remaining = verification.get("remaining_work") or []
+
+    sections = [
+        "Расследование остановлено: исчерпан бюджет вызовов.",
+        (
+            "Использовано вызовов: "
+            f"{len(state.get('action_attempts') or [])}/"
+            f"{state.get('max_tool_calls')}."
+        ),
+        "Подтверждаемая причина не установлена.",
+    ]
+
+    for title, items in (
+        ("Собранные подтверждения", evidence),
+        ("Не подтверждено", missing),
+        ("Что проверить дальше", remaining),
+    ):
+        if items:
+            sections.append(
+                title + ":\n"
+                + "\n".join(f"- {item}" for item in items)
+            )
+
+    return {
+        "termination_reason": "investigation_budget_exhausted",
+        "messages": [
+            AIMessage(content="\n\n".join(sections))
+        ],
+    }

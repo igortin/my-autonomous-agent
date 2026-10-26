@@ -134,8 +134,9 @@ async def executor_node(
         *(state.get("action_attempts") or [])
     ]
 
-
-    """ Блок определения следующего шага PlanStep """
+    updated_attempts = previous_attempts.copy()
+    
+    """ Определения следующего шага PlanStep """
 
     try:
 
@@ -148,6 +149,21 @@ async def executor_node(
                 "pending_step_result": None,
                 "execution_error": None,
             }
+
+        # Проверка бюджета вызова инструментов
+        max_tool_calls = state.get("max_tool_calls", 20)
+
+        # Считаем количество выполненных попыток  
+        # и превышении бюджета вызова инструментов записываем в состояние
+        if len(updated_attempts) >= max_tool_calls:
+            return {
+                "current_step": None,
+                "pending_step_result": None,
+                "action_attempts": updated_attempts,
+                "investigation_budget_exhausted": True,
+                "execution_error": None,
+            }
+
 
         # Определяем AgentAction в СЛУДУЮЩЕМ шаге
         action = step.action
@@ -224,12 +240,12 @@ async def executor_node(
                         f"Invalid arguments for {action.tool!r}: "
                         f"{exc.errors(include_url=False)}"
                     ),
-                    "tool_args": normalized_arguments,
+                    "tool_args": action.arguments,
                 },
             }
 
 
-        """ Блок обработки обьектов попыток вызова интсрумента класс ActionAttempt  """
+        """ Cоздания новой попытки класс ActionAttempt и вызова tool  """
 
         #  Создаем отпечаток состояния ресурса Deployment 
         environment_fingerprint = get_environment_fingerprint(
@@ -283,7 +299,7 @@ async def executor_node(
         ]
 
 
-        """ Блок выплнения Шага, вызова Инструмента и получения результата и наблюдения ActionObservation. """
+        """ Выплнения Шага, вызова Инструмента и получения результата и наблюдения ActionObservation. """
 
         # iteration_count counts completed on lifecycle iterations.
         # The currently executing iteration is therefore count + 1.

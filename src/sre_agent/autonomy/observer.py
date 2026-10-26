@@ -24,6 +24,10 @@ def observer_node(
     # Провереям наличие ошибок на Executor.
     if state.get("execution_error"):
         return {}
+ 
+    # Провереям наличие првышения бджета вызова инструментов
+    if state.get("investigation_budget_exhausted", False):
+        return {}
 
     # Читаем данные записанные в state.pending_step_result как результата предыдущего step на Executor.
     pending = state.get("pending_step_result")
@@ -133,6 +137,9 @@ def route_after_observer(
     if error.get("type") == "duplicate_action_blocked":
         return "human_escalation"
 
+    # Даже если следующий вызов уже запрещён, предыдущие наблюдения могут быть достаточны для подтверждения причины
+    if state.get("investigation_budget_exhausted", False):
+        return "verify_goal"
 
     # Проверка ошибок выполнения Tool на Executor
     # следущие зависимые step-ы не могут быть вызваны при ошибке на предыдущем шаге.
