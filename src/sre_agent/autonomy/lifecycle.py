@@ -5,6 +5,10 @@ from sre_agent.state import (
     SREAgentState,
 )
 
+
+# Сколько раз одинаковый вызов разрешён при одном и том же состоянии среды
+MAX_TOOL_CALLS_GLOBAL = 20
+
 ############################
 # Инициализация lifecycle (начальное состояние)
 ############################
@@ -37,8 +41,8 @@ def initialize_lifecycle_node(
         goal = AgentGoal.model_validate(raw_goal)
 
         # Читаем лимит вызовов инструментов за расследование из состояния 
-        # или инициализация по умочанию бюджета в 20 вызовов интструмента в рамках всех итериаций lifecycle. 
-        max_tool_calls = state.get("max_tool_calls", 20)
+        # или инициализация по умочанию бюджета вызовов интструмента в рамках всех итериаций lifecycle. 
+        max_tool_calls = state.get("max_tool_calls", MAX_TOOL_CALLS_GLOBAL)
 
         # Проверяем значение лимита числовое 
         if (not isinstance(max_tool_calls, int) or max_tool_calls < 1):
@@ -55,7 +59,9 @@ def initialize_lifecycle_node(
             "pending_step_result": None,
             "observations": [],
             "action_history": [],
-            "action_attempts": [],        
+            "action_attempts": [],    
+            "blocked_actions": [],
+            "duplicate_blocked": False,                
             "verification": None,
             "replan_feedback": [],
             "execution_error": None,
@@ -72,6 +78,8 @@ def initialize_lifecycle_node(
             "observations": [],
             "action_history": [],
             "action_attempts": [],
+            "blocked_actions": [],
+            "duplicate_blocked": False,            
             "verification": None,
             "replan_feedback": [],
             "execution_error": None,       

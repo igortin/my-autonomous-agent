@@ -24,9 +24,13 @@ def observer_node(
     # Провереям наличие ошибок на Executor.
     if state.get("execution_error"):
         return {}
- 
-    # Провереям наличие првышения бджета вызова инструментов
+
+     # Провереям наличие првышения бджета вызова инструментов
     if state.get("investigation_budget_exhausted", False):
+        return {}
+    
+    # Шаг пропущен duplicate guard: наблюдения нет, это не ошибка
+    if state.get("duplicate_blocked", False):
         return {}
 
     # Читаем данные записанные в state.pending_step_result как результата предыдущего step на Executor.
@@ -136,7 +140,12 @@ def route_after_observer(
     #  Проверка на превышение пыток вызова интсрумента
     if error.get("type") == "duplicate_action_blocked":
         return "human_escalation"
-
+  
+    # Первая блокировка: уже собранных наблюдений может быть достаточно,
+    # иначе Replanner выберет другое действие
+    if state.get("duplicate_blocked", False):
+        return "verify_goal"
+    
     # Даже если следующий вызов уже запрещён, предыдущие наблюдения могут быть достаточны для подтверждения причины
     if state.get("investigation_budget_exhausted", False):
         return "verify_goal"

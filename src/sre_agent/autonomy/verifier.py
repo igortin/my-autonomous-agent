@@ -53,6 +53,7 @@ async def verifier_node(
                 "pending_action": (
                     state.get("pending_step_result") is not None
                 ),
+                "blocked_actions": state.get("blocked_actions") or [],
             },
         )
         

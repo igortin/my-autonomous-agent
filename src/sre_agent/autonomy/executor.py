@@ -20,13 +20,14 @@ from sre_agent.autonomy.duplicate_guard import (
     build_action_attempt,
     get_environment_fingerprint,
     is_duplicate_limit_reached,
+    MAX_DUPLICATE_ATTEMPTS,
 )
 
 from sre_agent.autonomy.observation import (
     normalize_action_result,
 )
 
-
+from sre_agent.autonomy.lifecycle import MAX_TOOL_CALLS_GLOBAL
 
 # basic configuration
 logging.basicConfig(
@@ -35,6 +36,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
 
 #####################################
 # Helper Функция выбора следующего шага 
@@ -151,7 +153,7 @@ async def executor_node(
             }
 
         # Проверка бюджета вызова инструментов
-        max_tool_calls = state.get("max_tool_calls", 20)
+        max_tool_calls = state.get("max_tool_calls", MAX_TOOL_CALLS_GLOBAL)
 
         # Считаем количество выполненных попыток  
         # и превышении бюджета вызова инструментов записываем в состояние
@@ -266,31 +268,56 @@ async def executor_node(
         # previous_attempts = state.get("action_attempts") or []
 
         # Защита от превешния порога (занчение 2) повторения идентичных вызовов инструмента
-        if is_duplicate_limit_reached(
-            candidate=attempt,
-            attempts=previous_attempts,
-            max_attempts=2,                     
-        ):
+        if is_duplicate_limit_reached(candidate=attempt, attempts=previous_attempts, max_attempts=MAX_DUPLICATE_ATTEMPTS):
+
+            blocked_actions = state.get("blocked_actions") or []
+
+            # Replanner уже получал это действие как заблокированное,
+            # а состояние среды с тех пор не изменилось
+            already_blocked = any(
+                item.get("duplicate_key") == attempt.duplicate_key
+                for item in blocked_actions
+            )
+
+            if already_blocked:
+                return {
+                    "current_step": step.id,
+                    "pending_step_result": None,
+                    "execution_error": {
+                        "type": "duplicate_action_blocked",
+                        "message": (
+                            "Replanner repeated an action that was already "
+                            "blocked for the same environment state"
+                        ),
+                        "tool": action.tool,
+                        "duplicate_key": attempt.duplicate_key,
+                    },
+                    "human_escalation_required": True,
+                    "human_escalation_reason": (
+                        f"Повторный вызов {action.tool!r} заблокирован повторно: "
+                        "план снова содержит действие, которое уже было "
+                        "заблокировано при том же состоянии среды."
+                    ),
+                }            
+
+
+            # Первый блок: шаг пропускается, решение принимает Verifier
             return {
                 "current_step": step.id,
                 "pending_step_result": None,
-                "execution_error": {
-                    "type": "duplicate_action_blocked",
-                    "message": (
-                        "Identical action reached its attempt limit "
-                        "for the last known environment state"
-                    ),
-                    "tool": action.tool,
-                    "duplicate_key": attempt.duplicate_key,
-                },
-                "human_escalation_required": True,
-                "human_escalation_reason": (
-                    f"Повторный вызов {action.tool!r} заблокирован: "
-                    "исчерпан лимит попыток при том же "
-                    "последнем известном состоянии среды."
-                ),
+                "execution_error": None,
+                "duplicate_blocked": True,
+                "blocked_actions": [
+                    *blocked_actions,
+                    {
+                        "duplicate_key": attempt.duplicate_key,
+                        "tool": action.tool,
+                        "arguments": normalized_arguments,
+                        "step_id": step.id,
+                        "iteration": state.get("iteration_count", 0) + 1,
+                    },
+                ],
             }
-
 
         #  Записываем обьект попытка вызова иснтрумента в список
         updated_attempts = [

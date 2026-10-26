@@ -353,8 +353,6 @@ class ExecutionPlan(BaseModel):
             # Добавляем step ID
             seen.add(step.id)
 
-
-
         # вощращаем Объект класса ExecutionPlan
         return self
 
@@ -430,7 +428,6 @@ TerminationReason = Literal[
     "human_escalation_required",
     "investigation_budget_exhausted",
 ]
-
 
 # -------------------------
 #  Выходная схема Verifier
@@ -573,8 +570,6 @@ class ActionAttempt(BaseModel):
     )
 
 
-
-
 # ----------------------------------
 #  Схема состояния Агента (основная)
 # ----------------------------------
@@ -647,3 +642,10 @@ class SREAgentState(MessagesState, total=False):
 
     # Executor остановился перед следующим вызовом из-за бюджета.
     investigation_budget_exhausted: bool
+
+    # Действия, заблокированные duplicate guard в текущем lifecycle:
+    # {duplicate_key, tool, arguments, step_id, iteration}
+    blocked_actions: list[dict[str, Any]]
+
+    # В текущей итерации шаг пропущен duplicate guard (не ошибка).
+    duplicate_blocked: bool

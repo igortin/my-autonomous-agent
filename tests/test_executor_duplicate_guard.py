@@ -190,17 +190,13 @@ async def test_executor_blocks_duplicate_before_tool_call(
     deployment_tool_mock.ainvoke.assert_not_awaited()
 
 
-    # Причина остановки — именно duplicate guard.
-    assert result["execution_error"]["type"] == "duplicate_action_blocked"
-
-    assert result["human_escalation_required"] is True
-
+    # Первая блокировка — не ошибка: шаг пропущен, решает Verifier
+    assert result["execution_error"] is None
+    assert result["duplicate_blocked"] is True
+    assert result.get("human_escalation_required") is not True
     assert result["pending_step_result"] is None
-
     assert result["current_step"] == "step-1"
-
-    assert result["execution_error"]["duplicate_key"] == previous_attempt["duplicate_key"]
-
+    assert result["blocked_actions"][0]["duplicate_key"] == previous_attempt["duplicate_key"]
 
     # Нода возвращает обновления state.
     # Имитируем применение обновлений LangGraph.
@@ -277,4 +273,4 @@ async def test_new_action_id_does_not_bypass_duplicate_guard(
 
     deployment_tool_mock.ainvoke.assert_not_called()
 
-    assert result["execution_error"]["type"] == "duplicate_action_blocked"
+    assert result["duplicate_blocked"] is True
