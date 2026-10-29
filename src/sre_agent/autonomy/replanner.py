@@ -143,51 +143,70 @@ new evidence for the missing criteria.
 
 
 #####################################
-# Helper функция остатка повторов для Replanner
+# Вспомогательная функция расчета остатка повторов для Replanner
 #####################################
 def build_repeat_budget(
     state: SREAgentState,
 ) -> list[dict[str, Any]]:
     """
-    Для каждого уже выполненного вызова (tool + arguments) считает,
+    Для каждого уже выполненного вызова (tool и arguments) считает repeats_left,
     сколько раз его ещё можно повторить при текущем известном состоянии среды.
     Расчёт совпадает с проверкой duplicate guard в Executor.
     """
 
+    # Получаем список Наблюдений
     action_history = state.get("action_history") or []
+
+    # Получаем список попыток ActionAttempt
     attempts = state.get("action_attempts") or []
 
     seen: set[str] = set()
+
+
+
+    # Контейнер хранения количества     
     budget: list[dict[str, Any]] = []
 
+    # Итерируемся по списку Наблюдений
     for raw in action_history:
 
-        action = ActionObservation.model_validate(raw).action
+        # Валидируем и создаем обьект Наблюдение
+        observation = ActionObservation.model_validate(raw)
+
+        # Читаем Намерение AgentAction
+        action = observation.action
 
         if action is None:
+            # Пропускаем и переходим к следующему Наблюдению
             continue
 
+        # Получаем из реестра нужный инструмент по имени инструмента
         tool = READ_ONLY_TOOL_REGISTRY.get(action.tool)
 
         if tool is None:
+            # Пропускаем и переходим к следующему Наблюдению
             continue
 
         try:
-            normalized_arguments = tool.args_schema.model_validate(
-                action.arguments
-            ).model_dump(mode="json")
+            normalized_arguments = tool.args_schema.model_validate(action.arguments).model_dump(mode="json")
+
         except ValidationError:
+            # Пропускаем и переходим к следующему Наблюдению
             continue
 
-        # Один вызов — одна запись, независимо от action_id
+        # Создаем Отпечаток вызова инструмента на основе Намерение и нормализованных параметров
         action_fingerprint = build_action_fingerprint(action, normalized_arguments)
 
+        # Проверка уникальности отпечатка вызова инструмента 
         if action_fingerprint in seen:
+            # Пропускаем и переходим к следующему Наблюдению
             continue
 
+        # Добавляем Отпечатка вызова инструмента
         seen.add(action_fingerprint)
 
-        # Тот же кандидат, которого построит Executor при повторе
+
+        # Тот же кандидат поптыки ActionAttempt, которого построит Executor при повторе
         candidate = build_action_attempt(
             action=action,
             normalized_arguments=normalized_arguments,
@@ -199,8 +218,10 @@ def build_repeat_budget(
             ),
         )
 
+        # Считаем количество дублированных попыток ActionAttempt
         used = count_duplicate_attempts(candidate=candidate, attempts=attempts)
 
+        # Создаем список из структур описывающих доступное количество вызовов инструментов
         budget.append(
             {
                 "tool": action.tool,
@@ -265,7 +286,7 @@ async def replanner_node(
                             # последовательность наблюдений попыток для дальнейшего планирования
                             "action_history": action_history,
 
-                            # действия, заблокированные duplicate guard
+                            # попытки действия, поменченные как заблокированные duplicate guard-ом на Executor
                             "blocked_actions": state.get("blocked_actions") or [],                            
 
                             # сколько раз ещё можно повторить каждый выполненный вызов
@@ -343,4 +364,5 @@ def route_after_replanner(
     if not state.get("execution_plan"):
         return "stop"
 
+    # Продолжаем на executor_node
     return "continue"

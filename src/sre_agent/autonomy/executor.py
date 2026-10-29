@@ -247,9 +247,10 @@ async def executor_node(
             }
 
 
-        """ Cоздания новой попытки класс ActionAttempt и вызова tool  """
+        """ Cоздания новой попытки ActionAttempt и вызова Tool  """
 
-        #  Создаем отпечаток состояния ресурса Deployment 
+        # Создаем Отпечаток состояния ресурса, 
+        # когда агент последний раз успешно выполнял точно такое же действие  
         environment_fingerprint = get_environment_fingerprint(
             action=action,
             normalized_arguments=normalized_arguments,
@@ -257,28 +258,31 @@ async def executor_node(
             args_schema=tool.args_schema,
         )
 
-        #  Создаем кандидата новую Попытку вызова инструмента
+        # Создаем кандидата новую Попытку вызова инструмента класса ActionAttempt
         attempt = build_action_attempt(
             action=action,
             normalized_arguments=normalized_arguments,
             environment_fingerprint=environment_fingerprint,
         )
 
-        # Читаем список предыдущих попыток
-        # previous_attempts = state.get("action_attempts") or []
-
-        # Защита от превешния порога (занчение 2) повторения идентичных вызовов инструмента
+        # Защита от Попытки, которая превышают порог повторения идентичных вызовов инструмента
+        # Если состояние меняется, повторное чтение проходит. 
+        # Если не меняется состояние ресурса, после трёх одинаковых чтений срабатывает блок.
         if is_duplicate_limit_reached(candidate=attempt, attempts=previous_attempts, max_attempts=MAX_DUPLICATE_ATTEMPTS):
 
+            # Список действия, которые уже заблокированныев текущем lifecycle
             blocked_actions = state.get("blocked_actions") or []
 
-            # Replanner уже получал это действие как заблокированное,
-            # а состояние среды с тех пор не изменилось
+            # Есть ли ранее заблокированные идентичные ActionAttempt с тем же действием,
+            # если состояние среды с тех пор не изменилось
             already_blocked = any(
-                item.get("duplicate_key") == attempt.duplicate_key
+                item.get("duplicate_key") == attempt.duplicate_key 
                 for item in blocked_actions
             )
 
+            # ВТОРАЯ БЛОКИРОВКА:
+            # При ранее уже блокировании идентичных Попыток ActionAttempt, 
+            # поднимаем human_escalation_required и останавливаем выполнение графа
             if already_blocked:
                 return {
                     "current_step": step.id,
@@ -301,7 +305,9 @@ async def executor_node(
                 }            
 
 
-            # Первый блок: шаг пропускается, решение принимает Verifier
+
+            # ПЕРВАЯ БЛОКИРОВКА: шаг пропускается и решение принимает Verifier
+            # но ActionAttempt добавляется в список заблокированных действий, с целью блокирования всех последующих  
             return {
                 "current_step": step.id,
                 "pending_step_result": None,
@@ -319,7 +325,8 @@ async def executor_node(
                 ],
             }
 
-        #  Записываем обьект попытка вызова иснтрумента в список
+
+        # Записываем обьект Попытка вызова инструмента в общий список
         updated_attempts = [
             *previous_attempts,
             attempt.model_dump(mode="json"),
@@ -328,15 +335,12 @@ async def executor_node(
 
         """ Выплнения Шага, вызова Инструмента и получения результата и наблюдения ActionObservation. """
 
-        # iteration_count counts completed on lifecycle iterations.
-        # The currently executing iteration is therefore count + 1.
-        iteration = state.get("iteration_count", 0) + 1
+       
 
-        
-        # This log record is emitted BEFORE tool invocation.
+        # This log record is writing BEFORE tool invocation.
         logger.info(
             "agent_action_before_execution iteration=%s step_id=%s action=%s",
-            iteration,
+            state.get("iteration_count", 0) + 1,   # iteration_count counts completed on lifecycle iterations. The currently executing iteration is therefore count + 1.
             step.id,
             action.model_dump_json(),
         )
@@ -344,8 +348,9 @@ async def executor_node(
         try:     
             # Вызов инструмента и полечуение бизнес данных по ресурсу 
             raw_result = await tool.ainvoke(normalized_arguments)
-        
+
         except Exception as exc:
+            # Создаем наблюдение с не успешным вызовом инструмента 
             observation = ActionObservation(
                 action_id=action.action_id,
                 success=False,
@@ -353,19 +358,18 @@ async def executor_node(
                 error=f"{type(exc).__name__}: {exc}",
             )
 
-        # должен работать после успешного выполнения try блока
+        # Должен работать после успешного выполнения try блока
         else:
-        
-            # Нормализуем бизнес данные и создаем наблюдение класса ActionObservation
+            # Нормализуем бизнес данные и создаем Наблюдение ActionObservation
             observation = normalize_action_result(
                 action_id=action.action_id,
                 raw_result=raw_result,
             )
 
         logger.info(
-            "agent_action_after_execution step_id=%s observation=%s",
+            "agent_action_after_execution step_id=%s message=%s",
             step.id,
-            observation.model_dump_json(),
+            "succesfully completed.",
         )
 
         # в pending_step_result попадает step и observation наблюдение

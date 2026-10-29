@@ -137,12 +137,11 @@ def route_after_observer(
     # Читаем ошибку если есть, которая могла появитяс на executor_node из состояния
     error = state.get("execution_error") or {}
 
-    #  Проверка на превышение пыток вызова интсрумента
+    # ВТОРАЯ БЛОКИРОВКА: Проверка дубликатов на превышение попыток вызова интсрумента
     if error.get("type") == "duplicate_action_blocked":
         return "human_escalation"
   
-    # Первая блокировка: уже собранных наблюдений может быть достаточно,
-    # иначе Replanner выберет другое действие
+    # ПЕРВАЯ БЛОКИРОВКА: Проверка дубликатов попыток, но уже собранных наблюдений может быть достаточно
     if state.get("duplicate_blocked", False):
         return "verify_goal"
     
@@ -157,9 +156,9 @@ def route_after_observer(
 
     # Читаем все результаты предыдущих шагов
     observations = state.get("observations") or []
-    
+
+    """ Проверка результата ПОСЛЕДНЕГО шага на ошибки вызова инструмента """    
     if observations:
-        # Проверка результата ПОСЛЕДНЕГО шага на ошибки контракта
         try:
             latest_observation = ActionObservation.model_validate(observations[-1])
         except (TypeError, ValueError):
@@ -173,7 +172,7 @@ def route_after_observer(
             return "verify_goal"
 
 
-    """При успешном последнем шаге"""
+    """ При успешном последнем шаге определяем следующий шаг из плана"""
     try:
         # Определение следующего step из атрибута state.execution_plan
          next_step = select_next_executable_step(state)

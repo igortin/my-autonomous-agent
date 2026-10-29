@@ -44,19 +44,7 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 langgraph dev
 ```
 
-
-Создай запрос 1:
-```
-Найди причину, что у Deployment colvir-front-deployment
-в namespace colvir-test кластера docker-desktop
-количество готовых реплик подов меньше текущего
-желаемого количества из spec.replicas.
-Ничего не изменяй.
-```
-
-
-
-Создай запрос 2: Done
+Создай запрос 1: Done
 ```
 Определи причину, по которой pod bbox-1 в namespace colvir-test
 кластера docker-desktop находится в CrashLoopBackOff.
@@ -64,7 +52,7 @@ langgraph dev
 ```
 
 
-Создай запрос 3: Done
+Создай запрос 2: Done
 ```
 Проверь, что у Deployment colvir-back-deployment
 в namespace colvir-test кластера docker-desktop
@@ -74,7 +62,8 @@ langgraph dev
 ```
 
 
-Создай запрос 4: Done
+Создай запрос 3: Done
+
 ```
 Найди причину, почему Deployment payment-api
 в namespace agent-lab кластера docker-desktop

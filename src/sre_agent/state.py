@@ -193,7 +193,7 @@ class AgentAction(BaseModel):
 # -------------------------
 class ActionObservation(BaseModel):
     """
-    наблюдение описывает результат после вызова.
+    Наблюдение описывает результат после вызова.
     """
     model_config = ConfigDict(
         extra="forbid",
