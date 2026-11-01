@@ -4,17 +4,9 @@ import logging
 
 from sre_agent.state import ActionObservation
 
-from sre_agent.tools.kubernetes import (
-    get_node_events_tool,
-    get_node_tool,
-    get_pod_events_tool,
-    get_pod_logs_tool,
-    get_pod_tool,
-    list_nodes_tool,
-    list_pods_tool,
-    get_deployment_tool,
-)
+from sre_agent.tools.catalog import ToolCategory
 
+from sre_agent.tools.registry import TOOL_REGISTRY
 
 from sre_agent.autonomy.duplicate_guard import (
     build_action_attempt,
@@ -46,9 +38,9 @@ def select_next_executable_step(
 ) -> PlanStep | None:
 
     """
-    Функция определяет СЛЕДУЮЩИЙ шаг с учётом уже завершённых шагов в state.completed.
+    Функция определяет СЛЕДУЮЩИЙ STEPв плане, с учётом уже завершённых шагов в state.completed.
 
-    СЛЕДУЮЩИЙ Шаг можно выполнить, только если завершены все шаги, от которых он зависит.
+    СЛЕДУЮЩИЙ STEP можно выполнить, только если завершены все шаги, от которых он зависит.
     """
 
     # читаем сериализованный в json строку объект ExecutionPlan из state
@@ -85,38 +77,6 @@ def select_next_executable_step(
 
 
 #####################################
-# Реестр Whitelist Tools ( Security Boundary)
-#####################################
-
-# executor сверяет tool_name с реестром и только после этого вызывает tool
-READ_ONLY_TOOL_REGISTRY = {
-    "list_pods_tool": list_pods_tool,
-    "get_pod_tool": get_pod_tool,
-    "get_pod_logs_tool": get_pod_logs_tool,
-    "get_pod_events_tool": get_pod_events_tool,
-    "list_nodes_tool": list_nodes_tool,
-    "get_node_tool": get_node_tool,
-    "get_node_events_tool": get_node_events_tool,
-    "get_deployment_tool": get_deployment_tool,
-}
-
-#####################################
-# Реестр запрещенных нами Actions
-#####################################
-FORBIDDEN_ACTION_TYPES = {
-    "write",
-    "delete",
-    "patch",
-    "scale",
-    "restart",
-    "exec",
-    "create",
-    "apply",
-    "verify",
-}
-
-
-#####################################
 # Executor node
 #####################################
 async def executor_node(
@@ -124,10 +84,19 @@ async def executor_node(
 ) -> dict:
     """"
     Вызывает Tool и записывает фактический результат в state.pending_step_result 
-    Отвественость:
-    - проверить validated step
-    - проверить allowed tool
-    - получить raw result
+    
+    Порядок работы:
+    → Выбор шага
+    → Проверка Бюджета вызова инструментов
+    → Проверка action_type тип воздействия шага
+    → Проверка risk_level степень риска Намерения AgentAction
+    → Поиск инструмента в реестре
+    → Проверка доверенной категории инструмента
+    → Валидация аргументов Намерения AgentAction
+    → Duplicate guard
+    → Вызов инструмента
+    → Создание Наблюдения ActionObservation
+    → Запись результата в state.pending_step_result
     """
     step = None
 
@@ -152,7 +121,7 @@ async def executor_node(
                 "execution_error": None,
             }
 
-        # Проверка бюджета вызова инструментов
+        # Проверка Бюджета вызова инструментов
         max_tool_calls = state.get("max_tool_calls", MAX_TOOL_CALLS_GLOBAL)
 
         # Считаем количество выполненных попыток  
@@ -167,9 +136,10 @@ async def executor_node(
             }
 
 
-        # Определяем AgentAction в СЛУДУЮЩЕМ шаге
+        # Намерение класса AgentAction в СЛЕДУЮЩЕМ STEP
         action = step.action
-
+        
+        # Проверка тип воздействия STEP
         if step.action_type != "read":
             return {
                 "current_step": step.id,
@@ -187,6 +157,7 @@ async def executor_node(
                 ),
             }
 
+        # Проверка степени риска Намерения
         if action.risk_level != "read":
             return {
                 "current_step": step.id,
@@ -204,18 +175,18 @@ async def executor_node(
                 ),
             }
 
-        # Получаем инструмент из реестра на основе AgentAction
-        tool = READ_ONLY_TOOL_REGISTRY.get(action.tool)
+        # Проверка Категория инструмента 
+        # определяется доверенным реестром        
+        definition = TOOL_REGISTRY.get(action.tool)
 
-        # Проверка на отсутствия инструмента 
-        if tool is None:
+        if definition is None:
             return {
                 "current_step": step.id,
+                "pending_step_result": None,
                 "execution_error": {
                     "type": "tool_not_allowed",
                     "message": (
-                        f"Tool {action.tool!r} "
-                        "is not allowed"
+                        f"Tool {action.tool!r} is not registered"
                     ),
                 },
                 "human_escalation_required": True,
@@ -223,8 +194,32 @@ async def executor_node(
                     "Planner requested an unapproved tool"
                 ),
             }
+        
+        # Проверка дополнительно запрещает скрыть write-tool за step.action_type="read"
+        if definition.category != ToolCategory.READ:
+            return {
+                "current_step": step.id,
+                "pending_step_result": None,
+                "execution_error": {
+                    "type": "tool_category_not_allowed",
+                    "message": (
+                        f"Tool {action.tool!r} has category "
+                        f"{definition.category.value!r}; "
+                        "only 'read' is allowed"
+                    ),
+                    "tool": action.tool,
+                    "tool_category": definition.category.value,
+                },
+                "human_escalation_required": True,
+                "human_escalation_reason": (
+                    "Tool category is forbidden in read-only mode"
+                ),
+            }
 
 
+        # Читаем исполняемый объект Tool
+        tool = definition.tool
+        
         # Проверяем аргументы шага по args_schema (напрмер схема ListPodsToolInput) инструмента ДО вызова,
         # чтобы ошибка planner'а стала execution_error, а не исключением в графе
         try:
@@ -247,7 +242,7 @@ async def executor_node(
             }
 
 
-        """ Cоздания новой попытки ActionAttempt и вызова Tool  """
+        """ Cоздания новой попытки ActionAttempt и проверка в Duplication Guard """
 
         # Создаем Отпечаток состояния ресурса, 
         # когда агент последний раз успешно выполнял точно такое же действие  
@@ -334,8 +329,6 @@ async def executor_node(
 
 
         """ Выплнения Шага, вызова Инструмента и получения результата и наблюдения ActionObservation. """
-
-       
 
         # This log record is writing BEFORE tool invocation.
         logger.info(

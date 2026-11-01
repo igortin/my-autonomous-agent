@@ -150,7 +150,6 @@ async def test_replanner_recieves_history_and_preserves_it(monkeypatch):
     state.update(update)
 
 
-
     """ Тесты """
 
     # Проверка выполнения Observer node на ошибки

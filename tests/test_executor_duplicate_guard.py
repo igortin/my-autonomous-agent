@@ -22,13 +22,13 @@ from sre_agent.tools.kubernetes import (
     GetDeploymentToolInput,
 )
 
+from dataclasses import replace
+
+from sre_agent.tools.catalog import ToolCategory
 
 
 
-
-
-
-def make_action( action_id: str) -> AgentAction:
+def make_action(action_id: str) -> AgentAction:
     """ 
     Вспомогательная функция инициализации Намерения действия.
     """
@@ -114,12 +114,17 @@ def deployment_tool_mock(monkeypatch):
     )
 
 
-    # Временно заменяем инструмент в реестре READ_ONLY_TOOL_REGISTRY 
-    # в ключе get_deployment_tool значение на mock tool
+
+    # Берёт существующее описание инструмента original
+    # → Создаёт новый ToolDefinition
+    # → Сохраняет category, description и agent
+    # → Заменяет только tool на mock
+    original = executor_module.TOOL_REGISTRY["get_deployment_tool"]
+
     monkeypatch.setitem(
-        executor_module.READ_ONLY_TOOL_REGISTRY,
+        executor_module.TOOL_REGISTRY,
         "get_deployment_tool",
-        tool,
+        replace(original, tool=tool),
     )
 
     return tool
@@ -274,3 +279,141 @@ async def test_new_action_id_does_not_bypass_duplicate_guard(
     deployment_tool_mock.ainvoke.assert_not_called()
 
     assert result["duplicate_blocked"] is True
+
+
+###############################################
+#  Тестирование Executor_node c разрешенными категориями Инструмента  
+###############################################
+@pytest.mark.asyncio
+async def test_executor_allows_registered_read_tool(
+    deployment_tool_mock,
+):
+    """ Тестирование Executor_node c разрешенными категориями Инструмента. """
+    
+    # Создаем намерение AgentAction с вызовом инструмента get_deployment_tool 
+    # с risk_level="read"
+    action = make_action("action-read-allowed")
+
+    # Инициализируем состояние с планом и шагом включаеющим намерения AgentAction
+    state = make_state(action)
+
+    # Вызываем Executor
+    result = await executor_module.executor_node(state)
+
+    # Тесты
+    assert result["execution_error"] is None
+    
+    assert result["pending_step_result"] is not None
+    
+    assert len(result["action_attempts"]) == 1
+
+    deployment_tool_mock.ainvoke.assert_awaited_once_with(
+        {
+            "cluster_alias": "docker-desktop",
+            "namespace": "payments",
+            "deployment_name": "payment-api",
+        }
+    )
+
+
+###############################################
+#  Тестовые данные
+###############################################
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "category",
+    [
+        ToolCategory.WRITE,
+        ToolCategory.DESTRUCTIVE,
+    ],
+)
+###############################################
+#  Тестирование Executor_node с не разрешенными категориями Инструмента  
+###############################################
+async def test_executor_blocks_non_read_tool_even_if_plan_says_read(
+    monkeypatch,
+    deployment_tool_mock,
+    category,
+):
+    """
+    Тестирование Executor_node c не разрешенными категориями Инструмента
+    """
+
+    # Создаем намерение AgentAction с вызовом инструмента get_deployment_tool 
+    # с risk_level="read"
+    action = make_action("action-category-check")
+
+
+    # Инициализируем состояние с планом и шагом включаеющим намерения AgentAction
+    state = make_state(action)
+
+
+    # В плане по-прежнему указано:
+    # action_type="read", risk_level="read".
+    #
+    # Но доверенная запись реестра сообщает,
+    # что инструмент изменяет инфраструктуру.
+    original = executor_module.TOOL_REGISTRY[action.tool]
+
+
+    # Искусственно меняем категорию существующей записи только на время теста. 
+    # Реальный get_deployment_tool остаётся READ.
+    monkeypatch.setitem(
+        executor_module.TOOL_REGISTRY,
+        action.tool,
+        replace(original, category=category),
+    )
+
+
+    # Вызываем Executor
+    result = await executor_module.executor_node(state)
+
+
+
+    # Тесты
+    assert result["execution_error"]["type"] == ("tool_category_not_allowed")
+
+    assert result["execution_error"]["tool_category"] == (category.value)
+
+    assert result["human_escalation_required"] is True
+    
+    assert result["pending_step_result"] is None
+
+
+    # подтверждает, что инфраструктурный инструмент вообще не был вызван.
+    deployment_tool_mock.ainvoke.assert_not_awaited()
+
+    assert result.get("action_attempts", state["action_attempts"]) == []
+
+
+
+###############################################
+#  Тестирование Executor_node c неизвестным инструментом
+###############################################
+@pytest.mark.asyncio
+async def test_executor_blocks_unknown_tool(
+    deployment_tool_mock,
+):
+
+    # Создаем намерение действия, которое executor должен выполнить.
+    action = make_action("action-unknown-tool")
+    
+    # В копии намерения AgentAction перезаписавыем значение Tool
+    action = action.model_copy(
+        update={
+            "tool": "unregistered_tool",
+        }
+    )
+    
+    # Инициализируем состояние с планом и шагом включаеющим намерения AgentAction 
+    state = make_state(action)
+
+    # Вызов Executor node
+    result = await executor_module.executor_node(state)
+
+    assert result["execution_error"]["type"] == "tool_not_allowed"
+
+    assert result["human_escalation_required"] is True
+
+    assert result["pending_step_result"] is None
+    deployment_tool_mock.ainvoke.assert_not_awaited()

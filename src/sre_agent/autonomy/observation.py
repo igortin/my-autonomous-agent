@@ -80,7 +80,7 @@ def normalize_action_result(
         payload = raw_result
 
         
-        """Если пришёл ToolMessage"""
+        """ Если пришёл ToolMessage """
         if isinstance(payload, ToolMessage):
 
             # Проверка статуса исполнения инструмента по ToolMessage.status
@@ -113,7 +113,7 @@ def normalize_action_result(
                         error=payload.strip()  or "Tool execution failed",
                     )
 
-        """Если пришла JSON строка, просто строка или dict"""
+        """ Если пришла JSON строка, просто строка или dict """
         if isinstance(payload, str):
             # Десериализация payload.content строки в python объект dict
             payload = json.loads(payload)
@@ -131,7 +131,7 @@ def normalize_action_result(
             )
         
 
-        """Определим успешность выполнения инструмента"""         
+        """ Определим успешность выполнения инструмента """         
         
         # на основе ToolMessage, который содержит ключ "ок" (вернул Tool)
         success = (payload["ok"] and not tool_message_failed)

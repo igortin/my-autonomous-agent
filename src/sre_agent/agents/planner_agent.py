@@ -16,21 +16,63 @@ from sre_agent.state import (
     SREAgentState,
 )
 
-from sre_agent.tools.kubernetes import (
-    get_node_events_tool,
-    get_node_tool,
-    get_pod_events_tool,
-    get_pod_logs_tool,
-    get_pod_tool,
-    list_nodes_tool,
-    list_pods_tool,
-    get_deployment_tool,
-)
+from sre_agent.tools.catalog import ToolCategory
+
+from sre_agent.tools.registry import TOOL_REGISTRY
+
+
+# Всего попыток создать execution_plan
+MAX_PLANNER_ATTEMPTS = 3
+
+################################################
+# Вспомагательная функция списка инструментов чтения
+################################################
+def build_read_only_available_actions() -> list[AvailableAction]:
+    """
+    Вспогогатю функция формирования списка обьектов класса DTO AvailableAction 
+    из dict TOOL_REGISTRY
+    """
+
+
+    # Контейнер обьектов класса DTO AvailableAction
+    actions: list[AvailableAction] = []
+
+    # Итерируемся по реестру Интсрументов
+    for name, definition in TOOL_REGISTRY.items():
+
+        # Проверка Категории инструмента
+        if definition.category != ToolCategory.READ:
+            continue
+
+        # Поулчаем Интсрумент (исполняемый обьект)
+        tool = definition.tool
+
+        if tool.args_schema is None:
+            raise ValueError(f"Tool {name!r} must define args_schema")
+
+        # Создаем обьект AvailableAction и добавляем в контейнер
+        actions.append(
+            AvailableAction(
+                name=name,
+                agent=definition.agent,
+                action_type=definition.category,
+                description=definition.description,
+                requires_approval=False,
+                args_schema=tool.args_schema.model_json_schema(),
+            )
+        )
+
+    return actions
+
+
+
+# Создаем список доступных инструментов на основе  sre_agent.tools.registry.TOOL_REGISTRY
+READ_ONLY_AVAILABLE_ACTIONS = build_read_only_available_actions()
+
 
 ################################################
 # Реестр агентов на основе класса AvailableAgent
 ################################################
-
 # Список Агентов для контракта PlannerInput
 READ_ONLY_AVAILABLE_AGENTS = [
     AvailableAgent(
@@ -38,88 +80,6 @@ READ_ONLY_AVAILABLE_AGENTS = [
         description="Performs read-only Kubernetes diagnostics.",
     ),
 ]
-
-
-
-
-################################################
-# Реестр разрешенных действий класса AvailableAction
-################################################
-
-# Список Action для контракта PlannerInput
-READ_ONLY_AVAILABLE_ACTIONS = [
-    AvailableAction(
-        name="list_pods_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="List pods in a namespace.",
-        requires_approval=False,
-        args_schema=list_pods_tool.args_schema.model_json_schema(),
-
-    ),
-    AvailableAction(
-        name="get_pod_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="Inspect one Kubernetes pod.",
-        requires_approval=False,
-        args_schema=get_pod_tool.args_schema.model_json_schema(),
-    ),
-    AvailableAction(
-        name="get_pod_logs_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="Read recent logs from one pod.",
-        requires_approval=False,
-        args_schema=get_pod_logs_tool.args_schema.model_json_schema(),
-    ),
-    AvailableAction(
-        name="get_pod_events_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="Read Kubernetes events related to one pod.",
-        requires_approval=False,
-        args_schema=get_pod_events_tool.args_schema.model_json_schema(),
-    ),
-    AvailableAction(
-        name="list_nodes_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="List Kubernetes nodes.",
-        requires_approval=False,
-        args_schema=list_nodes_tool.args_schema.model_json_schema(),
-    ),
-    AvailableAction(
-        name="get_node_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="Inspect one Kubernetes node.",
-        requires_approval=False,
-        args_schema=get_node_tool.args_schema.model_json_schema(),
-
-    ),
-    AvailableAction(
-        name="get_node_events_tool",
-        agent="kubernetes",
-        action_type="read",
-        description="Read events related to one node.",
-        requires_approval=False,
-        args_schema=get_node_events_tool.args_schema.model_json_schema(),
-    ),
-    AvailableAction(
-        name="get_deployment_tool",
-        agent="kubernetes",
-        action_type="read",
-        description=(
-            "Read one Deployment, including spec.replicas, "
-            "status.ready_replicas, metadata.generation "
-            "and status.observed_generation."
-        ),
-        requires_approval=False,
-        args_schema=get_deployment_tool.args_schema.model_json_schema(),
-    ),    
-]
-
 
 ################################################
 # System Prompt Planner
@@ -347,8 +307,6 @@ async def create_execution_plan(
         ),
     ]
 
-    # Всего попыток создать execution_plan
-    MAX_PLANNER_ATTEMPTS = 3
 
     # контейнер для ошибки 
     last_error: Exception | None = None

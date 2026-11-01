@@ -292,7 +292,6 @@ class PlanStep(BaseModel):
         default_factory=list
         )
 
-
 # -------------------------
 #  Схема ExecutionPlan
 # -------------------------
@@ -362,8 +361,9 @@ class ExecutionPlan(BaseModel):
 # -------------------------
 class AvailableAgent(BaseModel):
     """
-    Схема Агента используемого в PlannerInput.
+    Схема DTO внутреннего Агента используемого в PlannerInput.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
@@ -376,21 +376,23 @@ class AvailableAgent(BaseModel):
 # -------------------------
 class AvailableAction(BaseModel):
     """
-    Схема описания Action используемого в PlannerInput.
+    Схема DTO описания Action используемого в PlannerInput.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
+
     agent: str = Field(min_length=1)
+
     action_type: str = Field(min_length=1)
+
     description: str = Field(min_length=1)
+
     requires_approval: bool = False
 
     # JSON Schema аргументов инструмента: planner берёт отсюда точные имена ключей для tool_args
-    args_schema: dict[str, Any] = Field(
-        default_factory=dict
-    )
+    args_schema: dict[str, Any] = Field( default_factory=dict)
 
 # -------------------------
 #  Схема PlannerInput 

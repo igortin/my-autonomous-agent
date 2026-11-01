@@ -9,7 +9,7 @@ from langchain_core.runnables import RunnableConfig
 from typing import Any, Literal 
 
 from sre_agent.agents.planner_agent import (
-    READ_ONLY_AVAILABLE_ACTIONS,
+    build_read_only_available_actions,
     validate_read_only_plan,
 )
 
@@ -31,7 +31,7 @@ from sre_agent.autonomy.duplicate_guard import (
     count_duplicate_attempts,
     get_environment_fingerprint,
 )
-from sre_agent.autonomy.executor import READ_ONLY_TOOL_REGISTRY
+from sre_agent.tools.registry import TOOL_REGISTRY
 
 # Инициализация LLM c структуированным выводом по схеме ExecutionPlan
 replanner_model = model.with_structured_output(
@@ -180,12 +180,20 @@ def build_repeat_budget(
             # Пропускаем и переходим к следующему Наблюдению
             continue
 
-        # Получаем из реестра нужный инструмент по имени инструмента
-        tool = READ_ONLY_TOOL_REGISTRY.get(action.tool)
+        # Получаем из реестра описание инструмента по имени инструмента
+        definition = TOOL_REGISTRY.get(action.tool)
 
-        if tool is None:
+        if definition is None:
             # Пропускаем и переходим к следующему Наблюдению
             continue
+
+        if definition is None:
+            # Пропускаем и переходим к следующему Наблюдению
+            continue
+
+        # Получаем Инструмент (исполняемый обьект)
+        tool = definition.tool
+
 
         try:
             normalized_arguments = tool.args_schema.model_validate(action.arguments).model_dump(mode="json")
@@ -266,6 +274,9 @@ async def replanner_node(
             )
             for item in (state.get("action_history") or [])
         ]        
+
+        # Создаем список доступных инструментов на основе  sre_agent.tools.registry.TOOL_REGISTRY
+        READ_ONLY_AVAILABLE_ACTIONS = build_read_only_available_actions()
 
         # Инициализируем новый пересмотренный план
         revised_execution_plan = await replanner_model.ainvoke(
